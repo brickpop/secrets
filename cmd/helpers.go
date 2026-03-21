@@ -42,6 +42,19 @@ func (a *agentStore) List() []string {
 
 func (a *agentStore) Close() {}
 
+// stdinPrompt is a lazily-initialized Prompter backed by os.Stdin.
+// All code must use this instead of prompt.New(os.Stdin, ...) to avoid
+// creating multiple bufio.Readers over the same stdin (which causes
+// data loss when input is piped).
+var stdinPrompt *prompt.Prompter
+
+func stdinPrompter() *prompt.Prompter {
+	if stdinPrompt == nil {
+		stdinPrompt = prompt.New(os.Stdin, os.Stderr)
+	}
+	return stdinPrompt
+}
+
 // openStore handles trial-decrypt and passphrase prompting.
 // Returns a read-write *store.Store. Used by set, rm, passwd.
 func openStore() (*store.Store, error) {
@@ -68,7 +81,7 @@ func openStore() (*store.Store, error) {
 		return s, nil
 	}
 
-	p := prompt.New(os.Stdin, os.Stderr)
+	p := stdinPrompter()
 	passphrase, err := p.Passphrase("Passphrase: ")
 	if err != nil {
 		return nil, UserError(err.Error())

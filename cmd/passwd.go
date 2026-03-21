@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/brickpop/secrets/internal/crypto/age"
-	"github.com/brickpop/secrets/internal/prompt"
 )
 
 func init() {
@@ -27,8 +26,7 @@ a new one. An empty passphrase is allowed.`,
 		}
 		defer s.Close()
 
-		p := prompt.New(os.Stdin, os.Stderr)
-		newPass, err := p.PassphraseConfirm(
+		newPass, err := stdinPrompter().PassphraseConfirm(
 			"New passphrase (leave empty for no passphrase): ",
 			"Confirm new passphrase: ",
 		)

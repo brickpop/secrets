@@ -28,7 +28,7 @@ func Load(path string) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("no .secrets.yaml found in the current directory. Use -f to specify a file path")
+			return nil, fmt.Errorf("manifest not found: %s", path)
 		}
 		return nil, fmt.Errorf("reading manifest: %w", err)
 	}

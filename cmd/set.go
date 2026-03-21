@@ -5,8 +5,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-
-	"github.com/brickpop/secrets/internal/prompt"
 )
 
 func init() {
@@ -27,8 +25,7 @@ shell history).`,
 		if len(args) == 2 {
 			value = args[1]
 		} else {
-			p := prompt.New(os.Stdin, os.Stderr)
-			v, err := p.Value("Value: ")
+			v, err := stdinPrompter().Value("Value: ")
 			if err != nil {
 				return UserError(err.Error())
 			}

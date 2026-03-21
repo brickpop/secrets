@@ -11,7 +11,6 @@ import (
 
 	"github.com/brickpop/secrets/internal/agent"
 	agebackend "github.com/brickpop/secrets/internal/crypto/age"
-	"github.com/brickpop/secrets/internal/prompt"
 	"github.com/brickpop/secrets/internal/store"
 )
 
@@ -34,7 +33,7 @@ The agent is read-only and serves get/list requests over a Unix socket.`,
 
 		// Check if already running
 		if agent.IsRunning(sockPath) {
-			fmt.Fprintf(os.Stdout, "export SECRETS_AGENT_SOCK=%s\n", sockPath)
+			fmt.Fprintln(os.Stderr, "Agent already running.")
 			return nil
 		}
 
@@ -63,8 +62,7 @@ The agent is read-only and serves get/list requests over a Unix socket.`,
 		if pt, ok := agebackend.TrialDecryptEmpty(ciphertext); ok {
 			plaintext = pt
 		} else {
-			p := prompt.New(os.Stdin, os.Stderr)
-			passphrase, err := p.Passphrase("Passphrase: ")
+			passphrase, err := stdinPrompter().Passphrase("Passphrase: ")
 			if err != nil {
 				return UserError(err.Error())
 			}
@@ -127,7 +125,6 @@ The agent is read-only and serves get/list requests over a Unix socket.`,
 		// Detach
 		daemonCmd.Process.Release()
 
-		fmt.Fprintf(os.Stdout, "export SECRETS_AGENT_SOCK=%s\n", sockPath)
 		fmt.Fprintln(os.Stderr, "Agent started.")
 
 		_ = ttl // TTL is passed to daemon via env

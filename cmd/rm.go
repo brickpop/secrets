@@ -5,8 +5,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-
-	"github.com/brickpop/secrets/internal/prompt"
 )
 
 func init() {
@@ -36,8 +34,7 @@ var rmCmd = &cobra.Command{
 		}
 
 		if !rmForce {
-			p := prompt.New(os.Stdin, os.Stderr)
-			ok, err := p.Confirm(fmt.Sprintf("Remove %s? [y/N] ", key))
+			ok, err := stdinPrompter().Confirm(fmt.Sprintf("Remove %s? [y/N] ", key))
 			if err != nil {
 				return UserError(err.Error())
 			}

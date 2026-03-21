@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/brickpop/secrets/internal/crypto/age"
-	"github.com/brickpop/secrets/internal/prompt"
 	"github.com/brickpop/secrets/internal/store"
 )
 
@@ -25,8 +24,7 @@ var initCmd = &cobra.Command{
 			return nil
 		}
 
-		p := prompt.New(os.Stdin, os.Stderr)
-		passphrase, err := p.PassphraseConfirm(
+		passphrase, err := stdinPrompter().PassphraseConfirm(
 			"Passphrase (leave empty for no passphrase): ",
 			"Confirm passphrase: ",
 		)

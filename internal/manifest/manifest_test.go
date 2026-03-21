@@ -142,7 +142,7 @@ func TestLoad_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("Load nonexistent should fail")
 	}
-	if !strings.Contains(err.Error(), "no .secrets.yaml") {
+	if !strings.Contains(err.Error(), "manifest not found") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

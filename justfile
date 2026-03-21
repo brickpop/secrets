@@ -132,16 +132,13 @@ smoke: build
     test "$($BIN ls | wc -l)" -eq 2
 
     echo "--- agent ---"
-    eval "$($BIN agent --ttl 30s)"
-    test -n "$SECRETS_AGENT_SOCK"
-    # get via agent
+    $BIN agent --ttl 30s
+    # get via agent (binary finds socket automatically via SECRETS_STORE_DIR)
     test "$($BIN get RPC_URL)" = "https://rpc.example.com"
     # ls via agent
     test "$($BIN ls | wc -l)" -eq 2
     # stop
     $BIN agent stop
-    sleep 0.1
-    test -z "$(test -S "$SECRETS_AGENT_SOCK" && echo yes)" || true
 
     echo "--- version ---"
     $BIN --version | grep -q "secrets"
