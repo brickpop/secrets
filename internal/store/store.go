@@ -15,6 +15,14 @@ import (
 	"github.com/brickpop/secrets/internal/crypto"
 )
 
+const metaFileName = "meta.json"
+
+// Meta holds store-level metadata written at init time.
+// It is unencrypted and used to determine how to open the store.
+type Meta struct {
+	Backend string `json:"backend"`
+}
+
 const (
 	appDirName    = "secrets"
 	storeFileName = "store.age"
@@ -88,6 +96,15 @@ func Init(backend crypto.Backend) error {
 		return fmt.Errorf("writing store: %w", err)
 	}
 
+	metaBytes, err := json.Marshal(Meta{Backend: "scrypt"})
+	if err != nil {
+		return fmt.Errorf("serializing meta: %w", err)
+	}
+	metaPath := filepath.Join(dir, metaFileName)
+	if err := atomicWrite(metaPath, metaBytes); err != nil {
+		return fmt.Errorf("writing meta: %w", err)
+	}
+
 	return nil
 }
 
@@ -123,20 +140,6 @@ func Open(backend crypto.Backend) (*Store, error) {
 		data[k] = []byte(v)
 	}
 
-	return &Store{data: data, backend: backend, dir: dir}, nil
-}
-
-// OpenFromBytes creates a Store from already-decrypted plaintext JSON.
-// Used by the agent path where decryption already happened.
-func OpenFromBytes(plaintext []byte, backend crypto.Backend, dir string) (*Store, error) {
-	data := make(map[string][]byte)
-	var raw map[string]string
-	if err := json.Unmarshal(plaintext, &raw); err != nil {
-		return nil, fmt.Errorf("parsing store data: %w", err)
-	}
-	for k, v := range raw {
-		data[k] = []byte(v)
-	}
 	return &Store{data: data, backend: backend, dir: dir}, nil
 }
 

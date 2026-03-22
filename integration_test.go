@@ -210,7 +210,7 @@ func TestIntegration_SpecialValues(t *testing.T) {
 	}
 }
 
-func TestIntegration_ExportPosix(t *testing.T) {
+func TestIntegration_ResolvePosix(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
@@ -223,7 +223,7 @@ keys:
   - PRIVATE_KEY
 `)
 
-	out := r.mustRun("export", "-f", filepath.Join(r.workDir, ".secrets.yaml"))
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".secrets.yaml"))
 	if !strings.Contains(out, "export RPC_URL=") {
 		t.Fatalf("posix export missing RPC_URL: %s", out)
 	}
@@ -232,7 +232,7 @@ keys:
 	}
 }
 
-func TestIntegration_ExportFish(t *testing.T) {
+func TestIntegration_ResolveFish(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
@@ -243,13 +243,13 @@ keys:
   - MY_VAR
 `)
 
-	out := r.mustRun("export", "-f", filepath.Join(r.workDir, ".secrets.yaml"), "--format", "fish")
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".secrets.yaml"), "--format", "fish")
 	if !strings.Contains(out, "set -x MY_VAR") {
 		t.Fatalf("fish export missing set -x: %s", out)
 	}
 }
 
-func TestIntegration_ExportDotenv(t *testing.T) {
+func TestIntegration_ResolveDotenv(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
@@ -260,13 +260,13 @@ keys:
   - MY_VAR
 `)
 
-	out := r.mustRun("export", "-f", filepath.Join(r.workDir, ".secrets.yaml"), "--format", "dotenv")
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".secrets.yaml"), "--format", "dotenv")
 	if !strings.Contains(out, "MY_VAR=") {
 		t.Fatalf("dotenv export missing MY_VAR: %s", out)
 	}
 }
 
-func TestIntegration_ExportMapFile(t *testing.T) {
+func TestIntegration_ResolveMapFile(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
@@ -279,7 +279,7 @@ keys:
 	r.writeFile(".secrets-map.yaml", `PROJECT_PK: PRIVATE_KEY
 `)
 
-	out := r.mustRun("export", "-f", filepath.Join(r.workDir, ".secrets.yaml"))
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".secrets.yaml"))
 	if !strings.Contains(out, "export PROJECT_PK=") {
 		t.Fatalf("mapped export missing PROJECT_PK: %s", out)
 	}
@@ -288,7 +288,7 @@ keys:
 	}
 }
 
-func TestIntegration_ExportPartial(t *testing.T) {
+func TestIntegration_ResolvePartial(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
@@ -300,9 +300,9 @@ keys:
   - MISSING
 `)
 
-	r.mustFail("export", "-f", filepath.Join(r.workDir, ".secrets.yaml"))
+	r.mustFail("resolve", "-f", filepath.Join(r.workDir, ".secrets.yaml"))
 
-	out := r.mustRun("export", "-f", filepath.Join(r.workDir, ".secrets.yaml"), "--partial")
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".secrets.yaml"), "--partial")
 	if !strings.Contains(out, "EXISTS") {
 		t.Fatalf("partial export missing EXISTS: %s", out)
 	}
@@ -330,10 +330,10 @@ func TestIntegration_AgentAutoStart(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
-	// First command auto-starts the agent
+	// Agent is auto-started by init; set uses it
 	r.mustRun("set", "AUTO_KEY", "auto_value")
 
-	// Agent should be running now
+	// Agent should be running
 	_, stderr, err := r.run("agent")
 	if err != nil {
 		t.Fatalf("agent check failed: %v", err)
@@ -464,6 +464,10 @@ func TestIntegration_WrongPassphrase(t *testing.T) {
 
 	r.mustRunWithStdin("correctpass\ncorrectpass\n", "init")
 
+	// init auto-starts the agent; stop it to simulate a fresh session
+	r.mustRun("agent", "stop")
+	time.Sleep(100 * time.Millisecond)
+
 	// Agent auto-start with wrong passphrase should fail
 	_, stderr, err := r.runWithStdin("wrongpass\n", "get", "KEY")
 	if err == nil {
@@ -474,17 +478,17 @@ func TestIntegration_WrongPassphrase(t *testing.T) {
 	}
 }
 
-func TestIntegration_ExportMissingManifest(t *testing.T) {
+func TestIntegration_ResolveMissingManifest(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
-	_, stderr := r.mustFail("export", "-f", filepath.Join(r.workDir, "nonexistent.yaml"))
+	_, stderr := r.mustFail("resolve", "-f", filepath.Join(r.workDir, "nonexistent.yaml"))
 	if !strings.Contains(stderr, "manifest not found") {
 		t.Fatalf("expected 'manifest not found' error, got: %s", stderr)
 	}
 }
 
-func TestIntegration_ExportInvalidFormat(t *testing.T) {
+func TestIntegration_ResolveInvalidFormat(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
@@ -493,7 +497,7 @@ keys:
   - KEY
 `)
 
-	_, stderr := r.mustFail("export", "-f", filepath.Join(r.workDir, ".secrets.yaml"), "--format", "invalid")
+	_, stderr := r.mustFail("resolve", "-f", filepath.Join(r.workDir, ".secrets.yaml"), "--format", "invalid")
 	if !strings.Contains(stderr, "invalid") || !strings.Contains(strings.ToLower(stderr), "format") {
 		t.Fatalf("expected format error, got: %s", stderr)
 	}
@@ -507,7 +511,7 @@ func TestIntegration_Version(t *testing.T) {
 	}
 }
 
-func TestIntegration_ExportCustomMapFile(t *testing.T) {
+func TestIntegration_ResolveCustomMapFile(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
@@ -521,7 +525,7 @@ keys:
 	r.writeFile("custom-map.yaml", `LOCAL_TOKEN: GLOBAL_TOKEN
 `)
 
-	out := r.mustRun("export", "-f", filepath.Join(r.workDir, ".secrets.yaml"))
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".secrets.yaml"))
 	if !strings.Contains(out, "LOCAL_TOKEN") {
 		t.Fatalf("custom map export missing LOCAL_TOKEN: %s", out)
 	}
@@ -540,7 +544,7 @@ func TestIntegration_DumpEmpty(t *testing.T) {
 	}
 }
 
-func TestIntegration_ExportOrderPreserved(t *testing.T) {
+func TestIntegration_ResolveOrderPreserved(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
@@ -555,7 +559,7 @@ keys:
   - ALPHA
 `)
 
-	out := r.mustRun("export", "-f", filepath.Join(r.workDir, ".secrets.yaml"))
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".secrets.yaml"))
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	if len(lines) != 3 {
 		t.Fatalf("export returned %d lines, want 3", len(lines))

@@ -24,10 +24,11 @@ var rmCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := args[0]
 
-		sockPath, err := ensureAgent()
-		if err != nil {
+		if err := ensureAgent(); err != nil {
 			return err
 		}
+
+		sockPath := agentSocketPath()
 
 		// Verify key exists via agent before prompting
 		if _, err := agent.Get(sockPath, key); err != nil {
@@ -44,7 +45,7 @@ var rmCmd = &cobra.Command{
 			}
 		}
 
-		err = withPassphrase(func(passphrase string) error {
+		err := withPassphrase(func(passphrase string) error {
 			return agent.Delete(sockPath, key, passphrase)
 		})
 		if err != nil {

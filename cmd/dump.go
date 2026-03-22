@@ -31,11 +31,11 @@ Intended for debugging and migration only.`,
 
 		fmt.Fprintln(os.Stderr, "Warning: dumping all secrets from store.")
 
-		sockPath, err := ensureAgent()
-		if err != nil {
+		if err := ensureAgent(); err != nil {
 			return err
 		}
 
+		sockPath := agentSocketPath()
 		keys, err := agent.List(sockPath)
 		if err != nil {
 			return InternalError(err.Error())

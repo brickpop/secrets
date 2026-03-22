@@ -78,6 +78,12 @@ func (b *ScryptBackend) Decrypt(ciphertext []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
+// NewBackend creates a ScryptBackend and returns it as a crypto.Backend.
+// Use this as a backend factory where func(string) crypto.Backend is required.
+func NewBackend(passphrase string) crypto.Backend {
+	return New(passphrase)
+}
+
 // TrialDecryptEmpty attempts to decrypt with the sentinel (empty) passphrase.
 // Returns the plaintext and true if successful, or nil and false if
 // the decryption fails (meaning a real passphrase is required).

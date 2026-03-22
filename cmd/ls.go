@@ -19,12 +19,11 @@ var lsCmd = &cobra.Command{
 	Long:  `List all key names sorted lexicographically, one per line. Never prints values.`,
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sockPath, err := ensureAgent()
-		if err != nil {
+		if err := ensureAgent(); err != nil {
 			return err
 		}
 
-		keys, err := agent.List(sockPath)
+		keys, err := agent.List(agentSocketPath())
 		if err != nil {
 			return InternalError(err.Error())
 		}

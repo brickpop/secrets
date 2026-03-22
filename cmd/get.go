@@ -21,12 +21,11 @@ var getCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := args[0]
 
-		sockPath, err := ensureAgent()
-		if err != nil {
+		if err := ensureAgent(); err != nil {
 			return err
 		}
 
-		val, err := agent.Get(sockPath, key)
+		val, err := agent.Get(agentSocketPath(), key)
 		if err != nil {
 			return UserError(fmt.Sprintf("Key %q not found in store.", key))
 		}

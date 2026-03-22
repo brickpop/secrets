@@ -4,6 +4,29 @@
 help:
     @just --list --unsorted
 
+# Check and install dev toolchain dependencies
+[group('dev')]
+setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ok=1
+    if ! command -v protoc &>/dev/null; then
+        echo "ERROR: protoc not found. Install with: apt install protobuf-compiler  OR  brew install protobuf"
+        ok=0
+    fi
+    if ! command -v protoc-gen-go &>/dev/null; then
+        echo "Installing protoc-gen-go..."
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+    fi
+    if [ $ok -eq 0 ]; then exit 1; fi
+    echo "Toolchain ready."
+
+# Regenerate protobuf Go code from agent.proto (commit the result)
+[group('dev')]
+proto:
+    protoc --go_out=. --go_opt=paths=source_relative internal/agent/agent.proto
+    @echo "Generated internal/agent/agent.pb.go — review and commit."
+
 # Format Go source code
 [group('dev')]
 fmt:
@@ -26,17 +49,22 @@ check: vet lint test
 # Run unit tests
 [group('test')]
 test:
-    go test ./...
+    go test -timeout 300s ./...
 
 # Run unit tests with verbose output
 [group('test')]
 test-v:
-    go test -v ./...
+    go test -v -timeout 300s ./...
 
 # Run integration tests (requires built binary)
 [group('test')]
 test-integration: build
     go test -tags integration -v ./...
+
+# Run unit tests with race detector
+[group('test')]
+test-race:
+    go test -race -timeout 300s ./...
 
 # Run all tests (unit + integration)
 [group('test')]
@@ -108,15 +136,15 @@ smoke: build
       - RPC_URL
       - PRIVATE_KEY
     YAML
-    eval "$($BIN export -f "$WORKDIR/.secrets.yaml")"
+    eval "$($BIN resolve -f "$WORKDIR/.secrets.yaml")"
     test "$RPC_URL" = "https://rpc.example.com"
     test "$PRIVATE_KEY" = "0xTESTKEY"
 
     echo "--- export (fish) ---"
-    $BIN export -f "$WORKDIR/.secrets.yaml" --format fish | grep -q "set -x"
+    $BIN resolve -f "$WORKDIR/.secrets.yaml" --format fish | grep -q "set -x"
 
     echo "--- export (dotenv) ---"
-    $BIN export -f "$WORKDIR/.secrets.yaml" --format dotenv | grep -q 'RPC_URL='
+    $BIN resolve -f "$WORKDIR/.secrets.yaml" --format dotenv | grep -q 'RPC_URL='
 
     echo "--- export --partial ---"
     cat > "$WORKDIR/.secrets.yaml" <<'YAML'
@@ -125,7 +153,7 @@ smoke: build
       - RPC_URL
       - MISSING_KEY
     YAML
-    $BIN export -f "$WORKDIR/.secrets.yaml" --partial 2>/dev/null | grep -q "MISSING_KEY"
+    $BIN resolve -f "$WORKDIR/.secrets.yaml" --partial 2>/dev/null | grep -q "MISSING_KEY"
 
     echo "--- dump ---"
     DUMP_OUT=$($BIN dump --format dotenv 2>/dev/null)

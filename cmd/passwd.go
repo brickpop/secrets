@@ -20,10 +20,11 @@ var passwdCmd = &cobra.Command{
 is allowed. The agent updates its internal state — no restart needed.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sockPath, err := ensureAgent()
-		if err != nil {
+		if err := ensureAgent(); err != nil {
 			return err
 		}
+
+		sockPath := agentSocketPath()
 
 		// Prompt for new passphrase first
 		newPass, err := stdinPrompter().PassphraseConfirm(

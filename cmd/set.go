@@ -34,17 +34,16 @@ shell history).`,
 			value = v
 		}
 
-		sockPath, err := ensureAgent()
-		if err != nil {
+		if err := ensureAgent(); err != nil {
 			return err
 		}
 
 		// agent.Set uses trial passphrase: new keys need no passphrase,
 		// overwrites require it.
-		err = withPassphrase(func(passphrase string) error {
+		sockPath := agentSocketPath()
+		if err := withPassphrase(func(passphrase string) error {
 			return agent.Set(sockPath, key, value, passphrase)
-		})
-		if err != nil {
+		}); err != nil {
 			return UserError(err.Error())
 		}
 

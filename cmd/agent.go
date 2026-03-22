@@ -85,8 +85,6 @@ var agentStopCmd = &cobra.Command{
 // startAgent decrypts the store, spawns the daemon, and waits for the socket.
 // Returns the socket path. Used by both `secrets agent` and ensureAgent().
 func startAgent(ttl time.Duration) (string, error) {
-	sockPath := agentSocketPath()
-
 	if !store.Exists() {
 		return "", UserError("No store found. Run 'secrets init' to create one.")
 	}
@@ -127,17 +125,24 @@ func startAgent(ttl time.Duration) (string, error) {
 	if err := json.Unmarshal(plaintext, &data); err != nil {
 		return "", InternalError("corrupt store data")
 	}
+	// Zero plaintext before handing off
+	for i := range plaintext {
+		plaintext[i] = 0
+	}
+
+	return launchDaemon(data, passphrase, ttl)
+}
+
+// launchDaemon spawns the agent daemon with already-decrypted data.
+// Used by startAgent (after decrypting from disk) and init (data already in memory).
+func launchDaemon(data map[string]string, passphrase string, ttl time.Duration) (string, error) {
+	sockPath := agentSocketPath()
 
 	// Build daemon payload with passphrase
 	payload := daemonPayload{Passphrase: passphrase, Data: data}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return "", InternalError("serializing daemon payload")
-	}
-
-	// Zero plaintext
-	for i := range plaintext {
-		plaintext[i] = 0
 	}
 
 	// Write payload to temp file
@@ -170,7 +175,6 @@ func startAgent(ttl time.Duration) (string, error) {
 	daemonCmd.Env = append(os.Environ(),
 		"_SECRETS_AGENT_DAEMON=1",
 		"_SECRETS_AGENT_DATA="+tmpFile.Name(),
-		"_SECRETS_AGENT_TTL="+ttlStr,
 	)
 	daemonCmd.Stdout = nil
 	daemonCmd.Stderr = nil
@@ -215,13 +219,13 @@ func runDaemon(sockPath string) error {
 		rawPayload[i] = 0
 	}
 
-	ttl, err := parseTTL(os.Getenv("_SECRETS_AGENT_TTL"))
+	ttl, err := parseTTL(agentTTL)
 	if err != nil {
 		ttl = 8 * time.Hour
 	}
 
 	backend := agebackend.New(payload.Passphrase)
-	srv := agent.NewServer(payload.Data, sockPath, payload.Passphrase, backend, store.Dir())
+	srv := agent.NewServer(payload.Data, sockPath, payload.Passphrase, backend, agebackend.NewBackend, store.Dir())
 	return srv.Start(ttl)
 }
 

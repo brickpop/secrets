@@ -2,16 +2,37 @@ package agent
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	agebackend "github.com/brickpop/secrets/internal/crypto/age"
+	"github.com/brickpop/secrets/internal/crypto"
 	"github.com/brickpop/secrets/internal/store"
 )
+
+// fastBackend is a trivial no-op crypto backend for tests.
+// It avoids scrypt overhead so agent tests run quickly under the race detector.
+// Passphrase logic in the server uses string comparison, not the backend,
+// so this does not reduce test coverage.
+type fastBackend struct{}
+
+func (fastBackend) Encrypt(plaintext []byte) ([]byte, error) {
+	out := make([]byte, len(plaintext)+1)
+	out[0] = 0x01
+	copy(out[1:], plaintext)
+	return out, nil
+}
+
+func (fastBackend) Decrypt(ciphertext []byte) ([]byte, error) {
+	if len(ciphertext) == 0 || ciphertext[0] != 0x01 {
+		return nil, fmt.Errorf("fastBackend: decrypt failed")
+	}
+	return ciphertext[1:], nil
+}
+
+func newFastBackend(_ string) crypto.Backend { return fastBackend{} }
 
 func startTestServer(t *testing.T, data map[string]string, passphrase string, ttl time.Duration) (string, *Server) {
 	t.Helper()
@@ -21,14 +42,14 @@ func startTestServer(t *testing.T, data map[string]string, passphrase string, tt
 	// Create the store dir and init a store so SaveData works
 	storeDir := t.TempDir()
 	t.Setenv("SECRETS_STORE_DIR", storeDir)
-	backend := agebackend.New(passphrase)
+	backend := fastBackend{}
 
 	// Init the store so the directory/file exist
 	if err := store.Init(backend); err != nil {
 		t.Fatalf("store init: %v", err)
 	}
 
-	srv := NewServer(data, sockPath, passphrase, backend, storeDir)
+	srv := NewServer(data, sockPath, passphrase, backend, newFastBackend, storeDir)
 
 	go func() {
 		srv.Start(ttl)
@@ -198,11 +219,12 @@ func TestUnknownOp(t *testing.T) {
 	sockPath, srv := startTestServer(t, map[string]string{}, "", 0)
 	defer srv.Stop()
 
-	resp, err := roundTrip(sockPath, &Request{Op: "invalid"})
+	// A Request with no payload set triggers the default (unknown op) case.
+	resp, err := roundTrip(sockPath, &Request{})
 	if err != nil {
 		t.Fatalf("roundTrip: %v", err)
 	}
-	if resp.OK {
+	if resp.Ok {
 		t.Fatal("unknown op should return ok=false")
 	}
 }
@@ -430,12 +452,12 @@ func TestSetPersistsToDisk(t *testing.T) {
 	t.Setenv("SECRETS_STORE_DIR", storeDir)
 	sockPath := filepath.Join(dir, "agent.sock")
 
-	backend := agebackend.New("")
+	backend := fastBackend{}
 	if err := store.Init(backend); err != nil {
 		t.Fatalf("store init: %v", err)
 	}
 
-	srv := NewServer(map[string]string{}, sockPath, "", backend, storeDir)
+	srv := NewServer(map[string]string{}, sockPath, "", backend, newFastBackend, storeDir)
 	go func() { srv.Start(0) }()
 	<-srv.Ready()
 	defer srv.Stop()
@@ -446,7 +468,7 @@ func TestSetPersistsToDisk(t *testing.T) {
 	}
 
 	// Read back from disk (bypass agent) to verify persistence
-	s, err := store.Open(backend)
+	s, err := store.Open(fastBackend{})
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
@@ -461,5 +483,3 @@ func TestSetPersistsToDisk(t *testing.T) {
 	}
 }
 
-// keep fmt used
-var _ = os.Remove

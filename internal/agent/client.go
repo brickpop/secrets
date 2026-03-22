@@ -1,8 +1,6 @@
 package agent
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
 	"net"
 	"time"
@@ -12,11 +10,11 @@ const dialTimeout = 2 * time.Second
 
 // Get retrieves a value from the agent.
 func Get(sockPath, key string) (string, error) {
-	resp, err := roundTrip(sockPath, &Request{Op: "get", Key: key})
+	resp, err := roundTrip(sockPath, &Request{Payload: &Request_Get{Get: &GetRequest{Key: key}}})
 	if err != nil {
 		return "", err
 	}
-	if !resp.OK {
+	if !resp.Ok {
 		return "", fmt.Errorf("%s", resp.Error)
 	}
 	return resp.Value, nil
@@ -24,11 +22,11 @@ func Get(sockPath, key string) (string, error) {
 
 // List retrieves all keys from the agent.
 func List(sockPath string) ([]string, error) {
-	resp, err := roundTrip(sockPath, &Request{Op: "list"})
+	resp, err := roundTrip(sockPath, &Request{Payload: &Request_List{List: &ListRequest{}}})
 	if err != nil {
 		return nil, err
 	}
-	if !resp.OK {
+	if !resp.Ok {
 		return nil, fmt.Errorf("%s", resp.Error)
 	}
 	return resp.Keys, nil
@@ -37,11 +35,11 @@ func List(sockPath string) ([]string, error) {
 // Set stores a key-value pair via the agent.
 // Passphrase is required when overwriting an existing key.
 func Set(sockPath, key, value, passphrase string) error {
-	resp, err := roundTrip(sockPath, &Request{Op: "set", Key: key, Value: value, Passphrase: passphrase})
+	resp, err := roundTrip(sockPath, &Request{Payload: &Request_Set{Set: &SetRequest{Key: key, Value: value, Passphrase: passphrase}}})
 	if err != nil {
 		return err
 	}
-	if !resp.OK {
+	if !resp.Ok {
 		return fmt.Errorf("%s", resp.Error)
 	}
 	return nil
@@ -49,11 +47,11 @@ func Set(sockPath, key, value, passphrase string) error {
 
 // Delete removes a key via the agent. Passphrase is always required.
 func Delete(sockPath, key, passphrase string) error {
-	resp, err := roundTrip(sockPath, &Request{Op: "delete", Key: key, Passphrase: passphrase})
+	resp, err := roundTrip(sockPath, &Request{Payload: &Request_Delete{Delete: &DeleteRequest{Key: key, Passphrase: passphrase}}})
 	if err != nil {
 		return err
 	}
-	if !resp.OK {
+	if !resp.Ok {
 		return fmt.Errorf("%s", resp.Error)
 	}
 	return nil
@@ -61,11 +59,11 @@ func Delete(sockPath, key, passphrase string) error {
 
 // Passwd changes the store passphrase via the agent.
 func Passwd(sockPath, oldPass, newPass string) error {
-	resp, err := roundTrip(sockPath, &Request{Op: "passwd", Passphrase: oldPass, NewPassphrase: newPass})
+	resp, err := roundTrip(sockPath, &Request{Payload: &Request_Passwd{Passwd: &PasswdRequest{Passphrase: oldPass, NewPassphrase: newPass}}})
 	if err != nil {
 		return err
 	}
-	if !resp.OK {
+	if !resp.Ok {
 		return fmt.Errorf("%s", resp.Error)
 	}
 	return nil
@@ -73,11 +71,11 @@ func Passwd(sockPath, oldPass, newPass string) error {
 
 // Stop signals the agent to wipe memory and exit.
 func Stop(sockPath string) error {
-	resp, err := roundTrip(sockPath, &Request{Op: "stop"})
+	resp, err := roundTrip(sockPath, &Request{Payload: &Request_Stop{Stop: &StopRequest{}}})
 	if err != nil {
 		return err
 	}
-	if !resp.OK {
+	if !resp.Ok {
 		return fmt.Errorf("%s", resp.Error)
 	}
 	return nil
@@ -104,25 +102,13 @@ func roundTrip(sockPath string, req *Request) (*Response, error) {
 	// can take ~500ms. Use a generous deadline.
 	conn.SetDeadline(time.Now().Add(30 * time.Second))
 
-	data, err := MarshalRequest(req)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := conn.Write(data); err != nil {
+	if err := WriteMsg(conn, req); err != nil {
 		return nil, fmt.Errorf("writing to agent: %w", err)
 	}
 
-	scanner := bufio.NewScanner(conn)
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return nil, fmt.Errorf("reading from agent: %w", err)
-		}
-		return nil, fmt.Errorf("agent closed connection")
-	}
-
 	var resp Response
-	if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {
-		return nil, fmt.Errorf("parsing agent response: %w", err)
+	if err := ReadMsg(conn, &resp); err != nil {
+		return nil, fmt.Errorf("reading from agent: %w", err)
 	}
 	return &resp, nil
 }

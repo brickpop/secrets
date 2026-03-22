@@ -51,38 +51,23 @@ keys:
 EOF
 
 # 5. Load the env vars
-eval "$(secrets export)"
+eval "$(secrets resolve)"
 ```
 
 ## Agent
 
-The agent holds the decrypted store in memory so you only enter your passphrase once per session. Start it manually in a terminal:
+The agent holds the decrypted store in memory so you only enter your passphrase once per session. Every command auto-starts it if it isn't running — you never manage the agent manually unless you want explicit TTL control:
 
 ```sh
-secrets agent
-# Passphrase: (prompted once, then the agent runs in the background)
+secrets agent --ttl 12h   # start with explicit lifetime
+secrets agent stop        # stop early
 ```
-
-Read commands (`get`, `ls`, `export`, `dump`) find the agent automatically. If the agent isn't running, they fall back to decrypting the store file directly.
 
 The agent expires after 8 hours by default. Override with `--ttl`:
 
 ```sh
 secrets agent --ttl 12h   # 12 hours
 secrets agent --ttl 0     # unlimited
-```
-
-If your store has **no passphrase**, you can auto-start the agent from your shell profile:
-
-```sh
-# ~/.bashrc or ~/.zshrc
-secrets agent 2>/dev/null
-```
-
-Stop it explicitly:
-
-```sh
-secrets agent stop
 ```
 
 ## The two-file design
@@ -116,7 +101,7 @@ Add to `.gitignore`:
 .secrets-map.yaml
 ```
 
-For each variable in `keys`, `secrets export` checks the map file first. If no mapping exists, the variable name is used directly as the store key.
+For each variable in `keys`, `secrets resolve` checks the map file first. If no mapping exists, the variable name is used directly as the store key.
 
 ## Justfile integration
 
@@ -127,7 +112,7 @@ _load-env:
     #!/usr/bin/env bash
     set -euo pipefail
     if command -v secrets &>/dev/null && [ -f .secrets.yaml ]; then
-        eval "$(secrets export)"
+        eval "$(secrets resolve)"
     elif [ -f .env ]; then
         set -a && source .env && set +a
     else
@@ -153,12 +138,12 @@ Projects that don't use `secrets` continue working with `.env` files as before.
 | `secrets ls` | List all keys (sorted, one per line) |
 | `secrets rm <key>` | Delete a key (`-f` to skip confirmation) |
 | `secrets passwd` | Change the store passphrase |
-| `secrets export` | Export secrets as shell variables via `.secrets.yaml` |
+| `secrets resolve` | Resolve manifest keys and print as shell variables |
 | `secrets dump` | Dump all secrets (debugging/migration) |
 | `secrets agent` | Start the background agent |
 | `secrets agent stop` | Stop the agent |
 
-### Export flags
+### Resolve flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -170,13 +155,20 @@ Projects that don't use `secrets` continue working with `.env` files as before.
 
 | Format | Example | Usage |
 |--------|---------|-------|
-| `posix` | `export KEY='value'` | `eval "$(secrets export)"` |
-| `fish` | `set -x KEY 'value'` | `secrets export --format fish \| source` |
+| `posix` | `export KEY='value'` | `eval "$(secrets resolve)"` |
+| `fish` | `set -x KEY 'value'` | `secrets resolve --format fish \| source` |
 | `dotenv` | `KEY="value"` | Pipe to files or other tools |
 
 ## Store location
 
-Default: `~/.local/share/secrets/store.age`
+Default store directory: `~/.local/share/secrets/`
+
+```
+~/.local/share/secrets/
+  store.age    # encrypted key-value data
+  meta.json    # store metadata (backend type)
+  agent.sock   # ephemeral agent socket (while running)
+```
 
 Override with environment variables (in priority order):
 
@@ -195,13 +187,15 @@ Override with environment variables (in priority order):
 
 ## Development
 
-Requires Go 1.22+ and [just](https://github.com/casey/just).
+Requires Go 1.22+, [just](https://github.com/casey/just), and `protoc` (for proto regeneration only).
 
 ```sh
+just setup       # check/install dev toolchain (protoc, protoc-gen-go)
 just help        # list all recipes
 just check       # vet + lint + test
 just test        # unit tests
 just test-all    # unit + integration tests
 just smoke       # quick end-to-end smoke test
 just build       # build binary
+just proto       # regenerate agent.pb.go from agent.proto (then commit)
 ```

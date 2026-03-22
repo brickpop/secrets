@@ -41,6 +41,11 @@ var initCmd = &cobra.Command{
 			fmt.Fprintln(os.Stderr, "Store created with no passphrase.")
 		}
 		fmt.Fprintf(os.Stderr, "Store created at %s\n", store.FilePath())
+
+		if _, err := launchDaemon(map[string]string{}, passphrase, defaultAgentTTL); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not start agent: %v\n", err)
+		}
+
 		return nil
 	},
 }

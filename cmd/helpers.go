@@ -25,20 +25,14 @@ func stdinPrompter() *prompt.Prompter {
 	return stdinPrompt
 }
 
-// ensureAgent returns the socket path to a running agent.
-// If no agent is running, it auto-starts one (prompting for passphrase if needed).
-func ensureAgent() (string, error) {
-	sockPath := agentSocketPath()
-	if agent.IsRunning(sockPath) {
-		return sockPath, nil
+// ensureAgent ensures a running agent, auto-starting one if needed.
+// If no agent is running, it prompts for passphrase if required and starts the daemon.
+func ensureAgent() error {
+	if agent.IsRunning(agentSocketPath()) {
+		return nil
 	}
-
-	// Auto-start
-	sockPath, err := startAgent(defaultAgentTTL)
-	if err != nil {
-		return "", err
-	}
-	return sockPath, nil
+	_, err := startAgent(defaultAgentTTL)
+	return err
 }
 
 // withPassphrase runs fn with the trial-passphrase approach.
@@ -86,19 +80,12 @@ func printManifestHint(key string) {
 
 // containsKey checks if a key appears as a YAML list item (- KEY).
 func containsKey(yamlContent string, key string) bool {
-	patterns := []string{
-		"- " + key + "\n",
-		"- " + key + "\r",
-		"- " + key,
+	needle := "- " + key
+	idx := strings.Index(yamlContent, needle)
+	if idx < 0 {
+		return false
 	}
-	for _, p := range patterns {
-		if len(yamlContent) >= len(p) {
-			for i := 0; i <= len(yamlContent)-len(p); i++ {
-				if yamlContent[i:i+len(p)] == p {
-					return true
-				}
-			}
-		}
-	}
-	return false
+	// Ensure it's at end-of-string or followed by a newline (not a prefix of another key).
+	end := idx + len(needle)
+	return end == len(yamlContent) || yamlContent[end] == '\n' || yamlContent[end] == '\r'
 }

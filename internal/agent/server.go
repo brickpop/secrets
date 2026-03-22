@@ -1,9 +1,7 @@
 package agent
 
 import (
-	"bufio"
 	"crypto/subtle"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -14,7 +12,6 @@ import (
 	"time"
 
 	"github.com/brickpop/secrets/internal/crypto"
-	agebackend "github.com/brickpop/secrets/internal/crypto/age"
 	"github.com/brickpop/secrets/internal/store"
 )
 
@@ -24,19 +21,22 @@ type Server struct {
 	dataMu     sync.RWMutex
 	passphrase string
 	backend    crypto.Backend
+	newBackend func(passphrase string) crypto.Backend
 	storeDir   string
 	sockPath   string
 	done       chan struct{}
 	ready      chan struct{}
 }
 
-// NewServer creates a new agent server with the given data and encryption context.
-func NewServer(data map[string]string, sockPath string, passphrase string, backend crypto.Backend, storeDir string) *Server {
+// NewServer creates a new agent server.
+// newBackend is a factory used by passwd to create a replacement backend with a new passphrase.
+func NewServer(data map[string]string, sockPath string, passphrase string, backend crypto.Backend, newBackend func(string) crypto.Backend, storeDir string) *Server {
 	return &Server{
 		data:       data,
 		sockPath:   sockPath,
 		passphrase: passphrase,
 		backend:    backend,
+		newBackend: newBackend,
 		storeDir:   storeDir,
 		done:       make(chan struct{}),
 		ready:      make(chan struct{}),
@@ -119,20 +119,20 @@ func (s *Server) Stop() {
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 
-	scanner := bufio.NewScanner(conn)
-	for scanner.Scan() {
+	for {
 		var req Request
-		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
-			resp, _ := MarshalResponse(&Response{OK: false, Error: "invalid request"})
-			conn.Write(resp)
-			continue
+		if err := ReadMsg(conn, &req); err != nil {
+			return
 		}
 
 		resp := s.handleRequest(&req)
-		data, _ := MarshalResponse(resp)
-		conn.Write(data)
+		// Write operations can take ~500ms (scrypt); use a generous deadline.
+		conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+		if err := WriteMsg(conn, resp); err != nil {
+			return
+		}
 
-		if req.Op == "stop" {
+		if _, ok := req.Payload.(*Request_Stop); ok {
 			s.Stop()
 			return
 		}
@@ -140,105 +140,105 @@ func (s *Server) handleConn(conn net.Conn) {
 }
 
 func (s *Server) handleRequest(req *Request) *Response {
-	switch req.Op {
-	case "get":
-		s.dataMu.RLock()
-		defer s.dataMu.RUnlock()
-		val, ok := s.data[req.Key]
-		if !ok {
-			return &Response{OK: false, Error: "key not found"}
-		}
-		return &Response{OK: true, Value: val}
-
-	case "list":
-		s.dataMu.RLock()
-		defer s.dataMu.RUnlock()
-		keys := make([]string, 0, len(s.data))
-		for k := range s.data {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		return &Response{OK: true, Keys: keys}
-
-	case "set":
-		return s.handleSet(req)
-
-	case "delete":
-		return s.handleDelete(req)
-
-	case "passwd":
-		return s.handlePasswd(req)
-
-	case "stop":
-		return &Response{OK: true}
-
+	switch p := req.Payload.(type) {
+	case *Request_Get:
+		return s.handleGet(p.Get)
+	case *Request_List:
+		return s.handleList()
+	case *Request_Set:
+		return s.handleSet(p.Set)
+	case *Request_Delete:
+		return s.handleDelete(p.Delete)
+	case *Request_Passwd:
+		return s.handlePasswd(p.Passwd)
+	case *Request_Stop:
+		return &Response{Ok: true}
 	default:
-		return &Response{OK: false, Error: "unknown op: " + req.Op}
+		return &Response{Ok: false, Error: "unknown op"}
 	}
 }
 
-func (s *Server) handleSet(req *Request) *Response {
+func (s *Server) handleGet(req *GetRequest) *Response {
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
+	val, ok := s.data[req.Key]
+	if !ok {
+		return &Response{Ok: false, Error: "key not found"}
+	}
+	return &Response{Ok: true, Value: val}
+}
+
+func (s *Server) handleList() *Response {
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
+	keys := make([]string, 0, len(s.data))
+	for k := range s.data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return &Response{Ok: true, Keys: keys}
+}
+
+func (s *Server) handleSet(req *SetRequest) *Response {
 	s.dataMu.Lock()
 	defer s.dataMu.Unlock()
 
-	// Overwriting an existing key requires the passphrase
+	// Overwriting an existing key requires the passphrase.
 	if _, exists := s.data[req.Key]; exists {
 		if !s.checkPassphrase(req.Passphrase) {
-			return &Response{OK: false, Error: ErrPassphraseRequired}
+			return &Response{Ok: false, Error: ErrPassphraseRequired}
 		}
 	}
 
 	s.data[req.Key] = req.Value
 
 	if err := store.SaveData(s.data, s.backend, s.storeDir); err != nil {
-		// Rollback: remove the key we just set (best effort)
 		delete(s.data, req.Key)
-		return &Response{OK: false, Error: fmt.Sprintf("saving store: %v", err)}
+		return &Response{Ok: false, Error: fmt.Sprintf("saving store: %v", err)}
 	}
 
-	return &Response{OK: true}
+	return &Response{Ok: true}
 }
 
-func (s *Server) handleDelete(req *Request) *Response {
+func (s *Server) handleDelete(req *DeleteRequest) *Response {
 	s.dataMu.Lock()
 	defer s.dataMu.Unlock()
 
 	if !s.checkPassphrase(req.Passphrase) {
-		return &Response{OK: false, Error: ErrPassphraseRequired}
+		return &Response{Ok: false, Error: ErrPassphraseRequired}
 	}
 
 	if _, exists := s.data[req.Key]; !exists {
-		return &Response{OK: false, Error: "key not found"}
+		return &Response{Ok: false, Error: "key not found"}
 	}
 
 	delete(s.data, req.Key)
 
 	if err := store.SaveData(s.data, s.backend, s.storeDir); err != nil {
-		return &Response{OK: false, Error: fmt.Sprintf("saving store: %v", err)}
+		return &Response{Ok: false, Error: fmt.Sprintf("saving store: %v", err)}
 	}
 
-	return &Response{OK: true}
+	return &Response{Ok: true}
 }
 
-func (s *Server) handlePasswd(req *Request) *Response {
+func (s *Server) handlePasswd(req *PasswdRequest) *Response {
 	s.dataMu.Lock()
 	defer s.dataMu.Unlock()
 
 	if !s.checkPassphrase(req.Passphrase) {
-		return &Response{OK: false, Error: ErrPassphraseRequired}
+		return &Response{Ok: false, Error: ErrPassphraseRequired}
 	}
 
-	newBackend := agebackend.New(req.NewPassphrase)
+	newBackend := s.newBackend(req.NewPassphrase)
 
 	if err := store.SaveData(s.data, newBackend, s.storeDir); err != nil {
-		return &Response{OK: false, Error: fmt.Sprintf("saving store: %v", err)}
+		return &Response{Ok: false, Error: fmt.Sprintf("saving store: %v", err)}
 	}
 
-	// Update internal state
 	s.passphrase = req.NewPassphrase
 	s.backend = newBackend
 
-	return &Response{OK: true}
+	return &Response{Ok: true}
 }
 
 func (s *Server) checkPassphrase(provided string) bool {
