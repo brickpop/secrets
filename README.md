@@ -1,12 +1,49 @@
 # secrets
 
-A single source of truth for environment variable secrets, shared across multiple projects. Replaces scattered `.env` files with one age-encrypted store and per-project manifests.
+One source of truth for environment variables, shared across multiple projects. Replaces scattered `.env` files with one age-encrypted store and per-project manifests.
 
-## Why?
+---
 
-If you maintain many repositories that need overlapping sets of private keys, RPC URLs, and API keys, you've probably got dozens of `.env` files with duplicated secrets that are hard to rotate and easy to accidentally commit. `secrets` centralizes them in one encrypted file and injects them into your shell on demand — no plaintext files on disk.
+If you work across many repositories — each with its own `.env` file full of keys, RPC URLs, and API tokens — you've felt the pain: secrets duplicated everywhere, rotations that miss half the repos, files that accidentally get committed.
+
+`secrets` is a CLI tool that keeps all your secrets in one age-encrypted store and injects them into any project on demand. No plaintext files. No duplication. One passphrase.
+
+```sh
+# Store a secret once
+secrets set ALCHEMY_API_KEY "1234..."
+
+# Use it in any project
+eval "$(secrets resolve)"   # loads the vars declared in .secrets.yaml
+```
+
+---
+
+## How it works
+
+Each project declares which variables it needs in a `.secrets.yaml` manifest (safe to commit — no values, just names):
+
+```yaml
+# myproject/.secrets.yaml
+project: myproject
+keys:
+  - RPC_URL
+  - PRIVATE_KEY
+  - ETHERSCAN_API
+```
+
+Running `secrets resolve` reads the manifest, fetches those keys from the encrypted store, and prints shell-ready output. You `eval` it and your environment is set.
+
+The store lives at `~/.local/share/secrets/` and is decrypted once at first use. The agent keeps it in memory for 8 hours by default — you type your passphrase once, then forget about it.
+
+---
 
 ## Install
+
+**From source:**
+
+```sh
+go install github.com/brickpop/secrets@latest
+```
 
 **From GitHub releases:**
 
@@ -20,29 +57,26 @@ curl -L https://github.com/brickpop/secrets/releases/latest/download/secrets_lin
 sudo mv secrets /usr/local/bin/
 ```
 
-**From source:**
-
-```sh
-go install github.com/brickpop/secrets@latest
-```
+---
 
 ## Quickstart
 
 ```sh
-# 1. Create the store (passphrase optional)
+# 1. Create the store (passphrase optional — press enter for none)
 secrets init
 
-# 2. Add some secrets
-secrets set PRIVATE_KEY
-# Value: (hidden input)
-
+# 2. Store some secrets
+secrets set PRIVATE_KEY          # prompts with hidden input (keeps it out of shell history)
 secrets set RPC_URL "https://rpc.example.com"
+secrets set ETHERSCAN_API "abc123"
 
-# 3. Use them
-secrets get RPC_URL
+# 3. Check what's stored
 secrets ls
 
-# 4. In a project, create .secrets.yaml
+# 4. Fetch a single value
+secrets get RPC_URL
+
+# 5. In your project, declare which keys to load
 cat > .secrets.yaml <<'EOF'
 project: myproject
 keys:
@@ -50,114 +84,110 @@ keys:
   - PRIVATE_KEY
 EOF
 
-# 5. Load the env vars
+# 6. Load them into your shell
 eval "$(secrets resolve)"
 ```
 
-## Agent
+---
 
-The agent holds the decrypted store in memory so you only enter your passphrase once per session. Every command auto-starts it on first use, prompting for the passphrase once. After that, secrets are served from memory for 8 hours.
+## Use cases
 
-You only interact with it directly if you want to adjust the lifetime or stop it early:
+### Load secrets into a project
 
-```sh
-secrets agent --ttl 4h    # restart with a shorter lifetime
-secrets agent --ttl 0     # no expiry
-secrets agent stop        # wipe memory and exit now
-```
-
-## Usage modes
-
-### 1. Standalone — on demand
-
-No project files needed. Just use the store directly:
+Commit `.secrets.yaml` to your repo. Anyone with the store can run:
 
 ```sh
-secrets set PRIVATE_KEY
-secrets get PRIVATE_KEY
-secrets ls
+eval "$(secrets resolve)"                          # bash/zsh
+secrets resolve --format fish | source             # fish
 ```
 
-Useful for one-off lookups or scripts that pull individual secrets.
+No `.env` files to manage, rotate, or accidentally commit.
 
-### 2. Project — `.secrets.yaml`
+### Run scripts with secrets injected
 
-Add a manifest to your project (commit it — it contains no secrets):
+```sh
+# justfile
+deploy:
+    #!/usr/bin/env bash
+    eval "$(secrets resolve)"
+    forge script script/Deploy.s.sol --broadcast
+
+test:
+    #!/usr/bin/env bash
+    eval "$(secrets resolve)"
+    forge test
+```
+
+### Import an existing `.env` file
+
+Migrating from `.env` files is a one-liner:
+
+```sh
+secrets import .env
+```
+
+Handles conflicts interactively: 
+- Skip existing keys
+- Overwrite them, or 
+- Save under a renamed key. Use `--suffix staging` to import environment-specific files without collisions.
+
+### Rename or reorganise keys
+
+```sh
+secrets mv OLD_KEY_NAME NEW_KEY_NAME
+```
+
+Atomic rename — the old key is deleted and the new one is written in one operation.
+
+### Different key name variants
+
+If you have multiple environments stored under different names, add a local `.secrets-map.yaml` (git-ignored) that maps project variable names to the key names on your store:
 
 ```yaml
-project: myproject
-keys:
-  - RPC_URL
-  - PRIVATE_KEY
-  - ETHERSCAN_API
-```
-
-Then load all of them at once:
-
-```sh
-eval "$(secrets resolve)"
-```
-
-The store key name must match the environment variable name. If your store uses different names, see mode 3.
-
-### 3. Project with remapped names — `.secrets-map.yaml`
-
-A local file (git-ignored) that maps local variable names to store keys. Only needed when the names differ:
-
-```yaml
+# .secrets-map.yaml  (never commit this)
 PRIVATE_KEY: PRIVATE_KEY_alice_hw
 RPC_URL: RPC_URL_alchemy_pro
 ```
 
-Add to `.gitignore`:
+`secrets resolve` checks this file first. The `.secrets.yaml` manifest stays the same for everyone on the team — only the personal mapping differs.
 
-```
-.secrets-map.yaml
-```
-
-`secrets resolve` checks this file first. If no mapping exists for a key, the variable name is used directly as the store key. The `.secrets.yaml` is still the source of truth for which variables the project needs — the map file is purely personal.
-
-## Justfile integration
-
-The recommended pattern for projects using [just](https://github.com/casey/just):
-
-```makefile
-_load-env:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if command -v secrets &>/dev/null && [ -f .secrets.yaml ]; then
-        eval "$(secrets resolve)"
-    elif [ -f .env ]; then
-        set -a && source .env && set +a
-    else
-        echo "Warning: no .env or .secrets.yaml found" >&2
-    fi
-
-deploy: _load-env
-    forge script script/Deploy.s.sol --broadcast
-
-test: _load-env
-    forge test
-```
-
-Projects that don't use `secrets` continue working with `.env` files as before.
+---
 
 ## Command reference
 
 | Command | Description |
 |---------|-------------|
 | `secrets init` | Create the encrypted store |
-| `secrets set <key> [value]` | Add or update a secret (prompts if value omitted) |
-| `secrets get <key>` | Print a secret to stdout (no trailing newline) |
-| `secrets ls` | List all keys (sorted, one per line) |
-| `secrets rm <key>` | Delete a key (`-f` to skip confirmation) |
+| `secrets set <key> [value]` | Add or update a secret |
+| `secrets get <key>` | Print a secret to stdout |
+| `secrets resolve` | Inject project secrets (reads `.secrets.yaml`) |
+| `secrets ls` | List all keys |
+| `secrets rm <key> [key...]` | Delete one or more keys |
+| `secrets mv <from> <to>` | Rename a key |
+| `secrets import <file>` | Import keys from a `.env` file |
+| `secrets dump` | Dump all secrets (debugging / migration) |
 | `secrets passwd` | Change the store passphrase |
-| `secrets resolve` | Resolve manifest keys and print as shell variables |
-| `secrets dump` | Dump all secrets (debugging/migration) |
-| `secrets agent [--ttl N]` | Adjust agent lifetime (optional — auto-started by every command) |
+| `secrets agent [--ttl N]` | Inspect or adjust the agent lifetime |
 | `secrets agent stop` | Wipe memory and stop the agent |
 
-### Resolve flags
+### `set` flags
+
+| Flag | Description |
+|------|-------------|
+| `--overwrite` | Replace existing key without prompting |
+| `--skip` | Do nothing if key already exists |
+
+When a key already exists with a different value and neither flag is given, `set` prompts interactively on a TTY (`[o]verwrite / [r]ename / [s]kip`). Setting a key to the same value it already has is a no-op.
+
+### `import` flags
+
+| Flag | Description |
+|------|-------------|
+| `--suffix <s>` | Append `_<s>` to all imported key names (e.g. `--suffix staging` → `KEY_staging`) |
+| `--overwrite` | Replace all conflicting keys without prompting |
+| `--skip` | Keep all existing keys, only import new ones |
+
+### `resolve` flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -167,49 +197,67 @@ Projects that don't use `secrets` continue working with `.env` files as before.
 
 ### Output formats
 
-| Format | Example | Usage |
-|--------|---------|-------|
+| Format | Example output | Shell usage |
+|--------|----------------|-------------|
 | `posix` | `export KEY='value'` | `eval "$(secrets resolve)"` |
 | `fish` | `set -x KEY 'value'` | `secrets resolve --format fish \| source` |
 | `dotenv` | `KEY="value"` | Pipe to files or other tools |
 
-## Store location
+---
 
-Default store directory: `~/.local/share/secrets/`
+## The agent
+
+The first command that needs the store auto-starts the agent: it decrypts the store into memory, starts a background process, and serves subsequent requests without touching disk. You type your passphrase once and it stays unlocked for 8 hours.
+
+You only need to interact with it directly if you want to change the lifetime:
+
+```sh
+secrets agent --ttl 4h    # restart with a shorter lifetime
+secrets agent --ttl 0     # never expire
+secrets agent stop        # wipe memory and exit immediately
+```
+
+The agent communicates over a Unix domain socket (`agent.sock` in the store directory). It never writes decrypted data to disk.
+
+---
+
+## Store layout
 
 ```
 ~/.local/share/secrets/
-  store.age    # encrypted key-value data
+  store.age    # all secrets, age-encrypted
   meta.json    # store metadata (backend type)
-  agent.sock   # ephemeral agent socket (while running)
+  agent.sock   # ephemeral socket (only while agent is running)
 ```
 
-Override with environment variables (in priority order):
+Override the directory:
 
-1. `SECRETS_STORE_DIR` — explicit override (also used by tests)
-2. `XDG_DATA_HOME/secrets/` — XDG standard
-3. `~/.local/share/secrets/` — XDG default
+```sh
+export SECRETS_STORE_DIR=/path/to/store
+```
+
+---
 
 ## Security
 
-- Encryption: [age](https://age-encryption.org) with scrypt passphrase (via `filippo.io/age`)
-- Decrypted secrets are held in `[]byte` and zeroed on close
-- Store file permissions enforced: directory `0700`, file `0600`
-- No plaintext ever written to disk
-- Atomic writes (temp file + rename) prevent corruption
-- Agent communicates over a Unix domain socket, not TCP
+- **Encryption**: [age](https://age-encryption.org) with scrypt key derivation (`filippo.io/age`)
+- **No plaintext on disk**: secrets are never written unencrypted
+- **Memory zeroing**: decrypted buffers are zeroed when the agent exits
+- **Permissions**: store directory `0700`, file `0600`
+- **Atomic writes**: temp file + rename prevents partial writes / corruption
+- **Empty passphrase**: fully supported — same security model as OpenSSH keys
+
+---
 
 ## Development
 
-Requires Go 1.22+, [just](https://github.com/casey/just), and `protoc` (for proto regeneration only).
+Requires Go 1.22+, [just](https://github.com/casey/just), and `protoc` (only for proto regeneration).
 
 ```sh
-just setup       # check/install dev toolchain (protoc, protoc-gen-go)
-just help        # list all recipes
+just setup       # check/install dev toolchain
 just check       # vet + lint + test
-just test        # unit tests
 just test-all    # unit + integration tests
 just smoke       # quick end-to-end smoke test
 just build       # build binary
-just proto       # regenerate agent.pb.go from agent.proto (then commit)
+just proto       # regenerate agent.pb.go (then commit)
 ```

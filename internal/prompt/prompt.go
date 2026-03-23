@@ -2,7 +2,7 @@
 //
 // The Prompter type wraps an io.Reader with buffering so multiple
 // sequential reads work correctly. For real terminal usage, passphrase
-// prompts use golang.org/x/term to suppress echo.
+// prompts show asterisks while typing; value prompts are visible.
 package prompt
 
 import (
@@ -37,17 +37,17 @@ func New(r io.Reader, w io.Writer) *Prompter {
 	return p
 }
 
-// Passphrase prompts for a passphrase with echo disabled on TTYs.
+// Passphrase prompts for a passphrase, showing asterisks on TTYs.
 func (p *Prompter) Passphrase(msg string) (string, error) {
 	fmt.Fprint(p.w, msg)
 
 	if p.isTTY {
-		pass, err := term.ReadPassword(p.fd)
+		pass, err := readMasked(p.fd, p.w)
 		fmt.Fprintln(p.w)
 		if err != nil {
 			return "", fmt.Errorf("reading passphrase: %w", err)
 		}
-		return string(pass), nil
+		return pass, nil
 	}
 
 	return p.readLine()
@@ -70,12 +70,13 @@ func (p *Prompter) PassphraseConfirm(msg string, confirmMsg string) (string, err
 	return pass1, nil
 }
 
-// Value prompts for a secret value with echo disabled.
+// Value prompts for a secret value with visible input. Leading/trailing spaces are trimmed.
 func (p *Prompter) Value(msg string) (string, error) {
-	return p.Passphrase(msg)
+	v, err := p.Line(msg)
+	return strings.TrimSpace(v), err
 }
 
-// Line prompts for visible (non-secret) text input.
+// Line prompts for visible text input.
 func (p *Prompter) Line(msg string) (string, error) {
 	fmt.Fprint(p.w, msg)
 	return p.readLine()
@@ -99,4 +100,42 @@ func (p *Prompter) readLine() (string, error) {
 		return "", err
 	}
 	return strings.TrimRight(line, "\r\n"), nil
+}
+
+// readMasked reads from fd in raw mode, printing '*' for each character typed.
+// Backspace removes the last character. Returns the entered string.
+func readMasked(fd int, w io.Writer) (string, error) {
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		return "", err
+	}
+	defer term.Restore(fd, oldState) //nolint:errcheck
+
+	tty := os.NewFile(uintptr(fd), "/dev/tty")
+	var buf []byte
+	b := make([]byte, 1)
+
+	for {
+		if _, err := tty.Read(b); err != nil {
+			return "", err
+		}
+		switch b[0] {
+		case '\r', '\n':
+			return string(buf), nil
+		case 3: // Ctrl+C
+			return "", fmt.Errorf("interrupted")
+		case 4: // Ctrl+D (EOF)
+			return string(buf), nil
+		case 127, 8: // backspace / delete
+			if len(buf) > 0 {
+				buf = buf[:len(buf)-1]
+				fmt.Fprint(w, "\b \b")
+			}
+		default:
+			if b[0] >= 32 { // printable characters only
+				buf = append(buf, b[0])
+				fmt.Fprint(w, "*")
+			}
+		}
+	}
 }

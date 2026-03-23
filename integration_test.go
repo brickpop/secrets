@@ -85,6 +85,15 @@ func (r *runner) mustRun(args ...string) string {
 	return stdout
 }
 
+func (r *runner) mustRunWithStderr(args ...string) (string, string) {
+	r.t.Helper()
+	stdout, stderr, err := r.run(args...)
+	if err != nil {
+		r.t.Fatalf("secrets %s failed: %v\nstdout: %s\nstderr: %s", strings.Join(args, " "), err, stdout, stderr)
+	}
+	return stdout, stderr
+}
+
 func (r *runner) mustFail(args ...string) (string, string) {
 	r.t.Helper()
 	stdout, stderr, err := r.run(args...)
@@ -179,11 +188,49 @@ func TestIntegration_SetOverwrite(t *testing.T) {
 	r.initNoPassphrase()
 
 	r.mustRun("set", "KEY", "first")
-	r.mustRun("set", "KEY", "second") // overwrite, no passphrase needed (empty-pass store)
+	r.mustRun("set", "KEY", "second", "--overwrite")
 
 	out := r.mustRun("get", "KEY")
 	if out != "second" {
 		t.Fatalf("get after overwrite = %q, want %q", out, "second")
+	}
+}
+
+func TestIntegration_Set_Idempotent(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "KEY", "value")
+	_, stderr := r.mustRunWithStderr("set", "KEY", "value")
+	if !strings.Contains(stderr, "Already set") {
+		t.Fatalf("expected idempotent message, got: %s", stderr)
+	}
+
+	if r.mustRun("get", "KEY") != "value" {
+		t.Fatal("value should be unchanged")
+	}
+}
+
+func TestIntegration_Set_Skip(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "KEY", "original")
+	r.mustRun("set", "KEY", "new", "--skip")
+
+	if r.mustRun("get", "KEY") != "original" {
+		t.Fatal("--skip should leave existing value unchanged")
+	}
+}
+
+func TestIntegration_Set_NonTTYConflictFails(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "KEY", "original")
+	_, stderr := r.mustFail("set", "KEY", "new")
+	if !strings.Contains(stderr, "--overwrite") || !strings.Contains(stderr, "--skip") {
+		t.Fatalf("expected flag hint, got: %s", stderr)
 	}
 }
 
