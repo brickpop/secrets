@@ -583,6 +583,106 @@ func TestIntegration_Mv_DestinationExists(t *testing.T) {
 	}
 }
 
+func TestIntegration_Import_Clean(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.writeFile(".env", "RPC_URL=https://rpc.example.com\nPRIVATE_KEY=0xABC\n")
+	r.mustRun("import", filepath.Join(r.workDir, ".env"))
+
+	if r.mustRun("get", "RPC_URL") != "https://rpc.example.com" {
+		t.Fatal("RPC_URL not imported")
+	}
+	if r.mustRun("get", "PRIVATE_KEY") != "0xABC" {
+		t.Fatal("PRIVATE_KEY not imported")
+	}
+}
+
+func TestIntegration_Import_Suffix(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.writeFile(".env", "RPC_URL=https://rpc.example.com\n")
+	r.mustRun("import", filepath.Join(r.workDir, ".env"), "--suffix", "dev")
+
+	r.mustFail("get", "RPC_URL")
+	if r.mustRun("get", "RPC_URL_dev") != "https://rpc.example.com" {
+		t.Fatal("RPC_URL_dev not imported")
+	}
+}
+
+func TestIntegration_Import_SuffixLeadingUnderscore(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.writeFile(".env", "RPC_URL=https://rpc.example.com\n")
+	// --suffix _dev and --suffix dev should be equivalent
+	r.mustRun("import", filepath.Join(r.workDir, ".env"), "--suffix", "_dev")
+
+	if r.mustRun("get", "RPC_URL_dev") != "https://rpc.example.com" {
+		t.Fatal("RPC_URL_dev not imported with leading underscore suffix")
+	}
+}
+
+func TestIntegration_Import_SkipConflict(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "RPC_URL", "original")
+	r.writeFile(".env", "RPC_URL=new_value\nNEW_KEY=new\n")
+	r.mustRun("import", filepath.Join(r.workDir, ".env"), "--skip")
+
+	// Existing key unchanged
+	if r.mustRun("get", "RPC_URL") != "original" {
+		t.Fatal("RPC_URL should be unchanged with --skip")
+	}
+	// New key imported
+	if r.mustRun("get", "NEW_KEY") != "new" {
+		t.Fatal("NEW_KEY should be imported")
+	}
+}
+
+func TestIntegration_Import_OverwriteConflict(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "RPC_URL", "original")
+	r.writeFile(".env", "RPC_URL=updated\n")
+	r.mustRun("import", filepath.Join(r.workDir, ".env"), "--overwrite")
+
+	if r.mustRun("get", "RPC_URL") != "updated" {
+		t.Fatal("RPC_URL should be overwritten")
+	}
+}
+
+func TestIntegration_Import_SameValueSkipped(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "RPC_URL", "same_value")
+	r.writeFile(".env", "RPC_URL=same_value\n")
+	// No --skip or --overwrite needed — same value is not a conflict
+	r.mustRun("import", filepath.Join(r.workDir, ".env"))
+
+	if r.mustRun("get", "RPC_URL") != "same_value" {
+		t.Fatal("RPC_URL should still have same_value")
+	}
+}
+
+func TestIntegration_Import_NonTTYConflictFails(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "RPC_URL", "original")
+	r.writeFile(".env", "RPC_URL=new_value\n")
+
+	// Non-TTY with conflict and no flag should fail
+	_, stderr := r.mustFail("import", filepath.Join(r.workDir, ".env"))
+	if !strings.Contains(stderr, "--overwrite") || !strings.Contains(stderr, "--skip") {
+		t.Fatalf("expected hint about --overwrite/--skip, got: %s", stderr)
+	}
+}
+
 func TestIntegration_DumpEmpty(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()

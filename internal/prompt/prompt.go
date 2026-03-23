@@ -75,6 +75,12 @@ func (p *Prompter) Value(msg string) (string, error) {
 	return p.Passphrase(msg)
 }
 
+// Line prompts for visible (non-secret) text input.
+func (p *Prompter) Line(msg string) (string, error) {
+	fmt.Fprint(p.w, msg)
+	return p.readLine()
+}
+
 // Confirm prompts for y/N confirmation.
 // Returns true only on explicit "y" or "yes". Default is no.
 func (p *Prompter) Confirm(msg string) (bool, error) {
