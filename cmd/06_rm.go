@@ -17,26 +17,32 @@ func init() {
 var rmForce bool
 
 var rmCmd = &cobra.Command{
-	Use:   "rm <key>",
-	Short: "Remove a secret from the store",
-	Long:  `Delete a key from the store. Prompts for confirmation unless --force is used.`,
-	Args:  cobra.ExactArgs(1),
+	Use:   "rm <key> [key...]",
+	Short: "Remove one or more secrets from the store",
+	Long:  `Delete keys from the store. Prompts for confirmation unless --force is used.`,
+	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		key := args[0]
-
 		if err := ensureAgent(); err != nil {
 			return err
 		}
 
 		sockPath := agentSocketPath()
 
-		// Verify key exists via agent before prompting
-		if _, err := agent.Get(sockPath, key); err != nil {
-			return UserError(fmt.Sprintf("Key %q not found in store.", key))
+		// Verify all keys exist before prompting
+		for _, key := range args {
+			if _, err := agent.Get(sockPath, key); err != nil {
+				return UserError(fmt.Sprintf("Key %q not found in store.", key))
+			}
 		}
 
 		if !rmForce {
-			ok, err := stdinPrompter().Confirm(fmt.Sprintf("Remove %s? [y/N] ", key))
+			var prompt string
+			if len(args) == 1 {
+				prompt = fmt.Sprintf("Remove %s? [y/N] ", args[0])
+			} else {
+				prompt = fmt.Sprintf("Remove %d keys (%s)? [y/N] ", len(args), joinKeys(args))
+			}
+			ok, err := stdinPrompter().Confirm(prompt)
 			if err != nil {
 				return UserError(err.Error())
 			}
@@ -46,13 +52,33 @@ var rmCmd = &cobra.Command{
 		}
 
 		err := withPassphrase(func(passphrase string) error {
-			return agent.Delete(sockPath, key, passphrase)
+			for _, key := range args {
+				if err := agent.Delete(sockPath, key, passphrase); err != nil {
+					return err
+				}
+			}
+			return nil
 		})
 		if err != nil {
 			return UserError(err.Error())
 		}
 
-		fmt.Fprintln(os.Stderr, "Removed.")
+		if len(args) == 1 {
+			fmt.Fprintln(os.Stderr, "Removed.")
+		} else {
+			fmt.Fprintf(os.Stderr, "Removed %d keys.\n", len(args))
+		}
 		return nil
 	},
+}
+
+func joinKeys(keys []string) string {
+	if len(keys) <= 3 {
+		result := keys[0]
+		for _, k := range keys[1:] {
+			result += ", " + k
+		}
+		return result
+	}
+	return fmt.Sprintf("%s, %s, ... +%d more", keys[0], keys[1], len(keys)-2)
 }

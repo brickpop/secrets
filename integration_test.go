@@ -583,6 +583,42 @@ func TestIntegration_Mv_DestinationExists(t *testing.T) {
 	}
 }
 
+func TestIntegration_Rm_MultiKey(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "KEY_A", "a")
+	r.mustRun("set", "KEY_B", "b")
+	r.mustRun("set", "KEY_C", "c")
+
+	r.mustRun("rm", "--force", "KEY_A", "KEY_B")
+
+	r.mustFail("get", "KEY_A")
+	r.mustFail("get", "KEY_B")
+
+	// KEY_C untouched
+	if r.mustRun("get", "KEY_C") != "c" {
+		t.Fatal("KEY_C should be unchanged")
+	}
+}
+
+func TestIntegration_Rm_MultiKey_OneMissing(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "KEY_A", "a")
+
+	_, stderr := r.mustFail("rm", "--force", "KEY_A", "NONEXISTENT")
+	if !strings.Contains(stderr, "NONEXISTENT") {
+		t.Fatalf("expected error mentioning missing key, got: %s", stderr)
+	}
+
+	// KEY_A should be untouched (validation happens before deletion)
+	if r.mustRun("get", "KEY_A") != "a" {
+		t.Fatal("KEY_A should be unchanged after partial failure")
+	}
+}
+
 func TestIntegration_Import_Clean(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()

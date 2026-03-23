@@ -38,9 +38,15 @@ shell history).`,
 			return err
 		}
 
+		sockPath := agentSocketPath()
+
+		// Warn if overwriting an existing key
+		if _, err := agent.Get(sockPath, key); err == nil {
+			fmt.Fprintf(os.Stderr, "Warning: overwriting existing key %q.\n", key)
+		}
+
 		// agent.Set uses trial passphrase: new keys need no passphrase,
 		// overwrites require it.
-		sockPath := agentSocketPath()
 		if err := withPassphrase(func(passphrase string) error {
 			return agent.Set(sockPath, key, value, passphrase)
 		}); err != nil {
