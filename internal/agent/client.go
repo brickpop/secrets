@@ -1,33 +1,82 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
-const dialTimeout = 2 * time.Second
+// unixAddr converts a socket path to a gRPC unix:// URI.
+// "unix://" + "/abs/path" = "unix:///abs/path" (3 slashes for absolute paths).
+func unixAddr(sockPath string) string { return "unix://" + sockPath }
+
+const (
+	dialTimeout          = 2 * time.Second
+	ErrPassphraseRequired = "passphrase required"
+)
+
+func newConn(sockPath string) (*grpc.ClientConn, error) {
+	return grpc.NewClient(unixAddr(sockPath),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+}
+
+// statusMsg extracts the plain message from a gRPC status error.
+func statusMsg(err error) error {
+	if err == nil {
+		return nil
+	}
+	if s, ok := status.FromError(err); ok {
+		return fmt.Errorf("%s", s.Message())
+	}
+	return err
+}
+
+func ctx30s() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 30*time.Second)
+}
+
+func ctx2s() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), dialTimeout)
+}
 
 // Get retrieves a value from the agent.
 func Get(sockPath, key string) (string, error) {
-	resp, err := roundTrip(sockPath, &Request{Payload: &Request_Get{Get: &GetRequest{Key: key}}})
+	conn, err := newConn(sockPath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("connecting to agent: %w", err)
 	}
-	if !resp.Ok {
-		return "", fmt.Errorf("%s", resp.Error)
+	defer conn.Close()
+
+	ctx, cancel := ctx30s()
+	defer cancel()
+
+	resp, err := NewSecretsClient(conn).Get(ctx, &GetRequest{Key: key})
+	if err != nil {
+		return "", statusMsg(err)
 	}
 	return resp.Value, nil
 }
 
 // List retrieves all keys from the agent.
 func List(sockPath string) ([]string, error) {
-	resp, err := roundTrip(sockPath, &Request{Payload: &Request_List{List: &ListRequest{}}})
+	conn, err := newConn(sockPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("connecting to agent: %w", err)
 	}
-	if !resp.Ok {
-		return nil, fmt.Errorf("%s", resp.Error)
+	defer conn.Close()
+
+	ctx, cancel := ctx30s()
+	defer cancel()
+
+	resp, err := NewSecretsClient(conn).List(ctx, &ListRequest{})
+	if err != nil {
+		return nil, statusMsg(err)
 	}
 	return resp.Keys, nil
 }
@@ -35,50 +84,68 @@ func List(sockPath string) ([]string, error) {
 // Set stores a key-value pair via the agent.
 // Passphrase is required when overwriting an existing key.
 func Set(sockPath, key, value, passphrase string) error {
-	resp, err := roundTrip(sockPath, &Request{Payload: &Request_Set{Set: &SetRequest{Key: key, Value: value, Passphrase: passphrase}}})
+	conn, err := newConn(sockPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("connecting to agent: %w", err)
 	}
-	if !resp.Ok {
-		return fmt.Errorf("%s", resp.Error)
-	}
-	return nil
+	defer conn.Close()
+
+	ctx, cancel := ctx30s()
+	defer cancel()
+
+	_, err = NewSecretsClient(conn).Set(ctx, &SetRequest{Key: key, Value: value, Passphrase: passphrase})
+	return statusMsg(err)
 }
 
 // Delete removes a key via the agent. Passphrase is always required.
 func Delete(sockPath, key, passphrase string) error {
-	resp, err := roundTrip(sockPath, &Request{Payload: &Request_Delete{Delete: &DeleteRequest{Key: key, Passphrase: passphrase}}})
+	conn, err := newConn(sockPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("connecting to agent: %w", err)
 	}
-	if !resp.Ok {
-		return fmt.Errorf("%s", resp.Error)
-	}
-	return nil
+	defer conn.Close()
+
+	ctx, cancel := ctx30s()
+	defer cancel()
+
+	_, err = NewSecretsClient(conn).Delete(ctx, &DeleteRequest{Key: key, Passphrase: passphrase})
+	return statusMsg(err)
 }
 
 // Passwd changes the store passphrase via the agent.
 func Passwd(sockPath, oldPass, newPass string) error {
-	resp, err := roundTrip(sockPath, &Request{Payload: &Request_Passwd{Passwd: &PasswdRequest{Passphrase: oldPass, NewPassphrase: newPass}}})
+	conn, err := newConn(sockPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("connecting to agent: %w", err)
 	}
-	if !resp.Ok {
-		return fmt.Errorf("%s", resp.Error)
-	}
-	return nil
+	defer conn.Close()
+
+	ctx, cancel := ctx30s()
+	defer cancel()
+
+	_, err = NewSecretsClient(conn).Passwd(ctx, &PasswdRequest{Passphrase: oldPass, NewPassphrase: newPass})
+	return statusMsg(err)
 }
 
-// Stop signals the agent to wipe memory and exit.
-func Stop(sockPath string) error {
-	resp, err := roundTrip(sockPath, &Request{Payload: &Request_Stop{Stop: &StopRequest{}}})
+// SetAgentTTL adjusts the agent's lifetime.
+// seconds: -1 = stop immediately, 0 = no expiry, >0 = lifetime in seconds.
+func SetAgentTTL(sockPath string, seconds int64) error {
+	conn, err := newConn(sockPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("connecting to agent: %w", err)
 	}
-	if !resp.Ok {
-		return fmt.Errorf("%s", resp.Error)
-	}
-	return nil
+	defer conn.Close()
+
+	ctx, cancel := ctx2s()
+	defer cancel()
+
+	_, err = NewSecretsClient(conn).SetAgentTTL(ctx, &SetAgentTTLRequest{Seconds: seconds})
+	return statusMsg(err)
+}
+
+// Stop signals the agent to wipe memory and exit immediately.
+func Stop(sockPath string) error {
+	return SetAgentTTL(sockPath, -1)
 }
 
 // IsRunning checks if an agent is reachable at the given socket path.
@@ -89,26 +156,4 @@ func IsRunning(sockPath string) bool {
 	}
 	conn.Close()
 	return true
-}
-
-func roundTrip(sockPath string, req *Request) (*Response, error) {
-	conn, err := net.DialTimeout("unix", sockPath, dialTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("connecting to agent: %w", err)
-	}
-	defer conn.Close()
-
-	// Write operations (set, delete, passwd) do scrypt encryption which
-	// can take ~500ms. Use a generous deadline.
-	conn.SetDeadline(time.Now().Add(30 * time.Second))
-
-	if err := WriteMsg(conn, req); err != nil {
-		return nil, fmt.Errorf("writing to agent: %w", err)
-	}
-
-	var resp Response
-	if err := ReadMsg(conn, &resp); err != nil {
-		return nil, fmt.Errorf("reading from agent: %w", err)
-	}
-	return &resp, nil
 }

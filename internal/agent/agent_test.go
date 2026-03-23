@@ -215,17 +215,27 @@ func TestIsRunning_NotRunning(t *testing.T) {
 	}
 }
 
-func TestUnknownOp(t *testing.T) {
-	sockPath, srv := startTestServer(t, map[string]string{}, "", 0)
-	defer srv.Stop()
+func TestSetAgentTTL(t *testing.T) {
+	// Start with a short TTL, reset to infinite before it fires, then stop via -1.
+	sockPath, _ := startTestServer(t, map[string]string{}, "", 200*time.Millisecond)
 
-	// A Request with no payload set triggers the default (unknown op) case.
-	resp, err := roundTrip(sockPath, &Request{})
-	if err != nil {
-		t.Fatalf("roundTrip: %v", err)
+	// Reset to infinite before the 200ms TTL fires
+	if err := SetAgentTTL(sockPath, 0); err != nil {
+		t.Fatalf("SetAgentTTL(0): %v", err)
 	}
-	if resp.Ok {
-		t.Fatal("unknown op should return ok=false")
+
+	time.Sleep(400 * time.Millisecond)
+	if !IsRunning(sockPath) {
+		t.Fatal("agent should still be running after TTL was reset to infinite")
+	}
+
+	// Stop via -1
+	if err := SetAgentTTL(sockPath, -1); err != nil {
+		t.Fatalf("SetAgentTTL(-1): %v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if IsRunning(sockPath) {
+		t.Fatal("agent should have stopped after SetAgentTTL(-1)")
 	}
 }
 

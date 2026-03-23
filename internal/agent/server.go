@@ -1,7 +1,7 @@
 package agent
 
 import (
-	"crypto/subtle"
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -11,12 +11,20 @@ import (
 	"syscall"
 	"time"
 
+	"crypto/subtle"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/brickpop/secrets/internal/crypto"
 	"github.com/brickpop/secrets/internal/store"
 )
 
-// Server holds decrypted store data in memory and serves it over a Unix socket.
+// Server holds decrypted store data in memory and serves it over a Unix socket via gRPC.
 type Server struct {
+	UnimplementedSecretsServer
+
 	data       map[string]string
 	dataMu     sync.RWMutex
 	passphrase string
@@ -24,13 +32,18 @@ type Server struct {
 	newBackend func(passphrase string) crypto.Backend
 	storeDir   string
 	sockPath   string
-	done       chan struct{}
-	ready      chan struct{}
+
+	timer   *time.Timer
+	timerMu sync.Mutex
+
+	grpcSrv *grpc.Server
+	done    chan struct{}
+	ready   chan struct{}
 }
 
 // NewServer creates a new agent server.
-// newBackend is a factory used by passwd to create a replacement backend with a new passphrase.
-func NewServer(data map[string]string, sockPath string, passphrase string, backend crypto.Backend, newBackend func(string) crypto.Backend, storeDir string) *Server {
+// newBackend is a factory used by Passwd to create a replacement backend.
+func NewServer(data map[string]string, sockPath, passphrase string, backend crypto.Backend, newBackend func(string) crypto.Backend, storeDir string) *Server {
 	return &Server{
 		data:       data,
 		sockPath:   sockPath,
@@ -48,26 +61,21 @@ func NewServer(data map[string]string, sockPath string, passphrase string, backe
 func (s *Server) Start(ttl time.Duration) error {
 	os.Remove(s.sockPath)
 
-	ln, err := net.Listen("unix", s.sockPath)
+	lis, err := net.Listen("unix", s.sockPath)
 	if err != nil {
 		return err
 	}
+	os.Chmod(s.sockPath, 0600)
+
+	// Hook the server to the GRPC request handlers
+	s.grpcSrv = grpc.NewServer()
+	RegisterSecretsServer(s.grpcSrv, s)
 
 	close(s.ready)
 
-	os.Chmod(s.sockPath, 0600)
-
 	if ttl > 0 {
-		time.AfterFunc(ttl, func() {
-			s.Stop()
-		})
+		s.resetTimer(ttl)
 	}
-
-	// Close listener when done fires (from Stop, TTL, or signal).
-	go func() {
-		<-s.done
-		ln.Close()
-	}()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
@@ -79,26 +87,23 @@ func (s *Server) Start(ttl time.Duration) error {
 		}
 	}()
 
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			select {
-			case <-s.done:
-				return nil
-			default:
-				continue
-			}
+	if err := s.grpcSrv.Serve(lis); err != nil {
+		select {
+		case <-s.done:
+			return nil // graceful shutdown
+		default:
+			return err
 		}
-		go s.handleConn(conn)
 	}
+	return nil
 }
 
-// Ready returns a channel that is closed when the server is listening.
+// Ready returns a channel closed when the server is listening.
 func (s *Server) Ready() <-chan struct{} {
 	return s.ready
 }
 
-// Stop wipes memory, closes the socket, and cleans up.
+// Stop drains in-flight RPCs, wipes memory, and removes the socket.
 func (s *Server) Stop() {
 	select {
 	case <-s.done:
@@ -106,6 +111,17 @@ func (s *Server) Stop() {
 	default:
 	}
 	close(s.done)
+
+	s.timerMu.Lock()
+	if s.timer != nil {
+		s.timer.Stop()
+		s.timer = nil
+	}
+	s.timerMu.Unlock()
+
+	if s.grpcSrv != nil {
+		s.grpcSrv.GracefulStop()
+	}
 
 	s.dataMu.Lock()
 	for k := range s.data {
@@ -116,59 +132,31 @@ func (s *Server) Stop() {
 	os.Remove(s.sockPath)
 }
 
-func (s *Server) handleConn(conn net.Conn) {
-	defer conn.Close()
-
-	for {
-		var req Request
-		if err := ReadMsg(conn, &req); err != nil {
-			return
-		}
-
-		resp := s.handleRequest(&req)
-		// Write operations can take ~500ms (scrypt); use a generous deadline.
-		conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-		if err := WriteMsg(conn, resp); err != nil {
-			return
-		}
-
-		if _, ok := req.Payload.(*Request_Stop); ok {
-			s.Stop()
-			return
-		}
+func (s *Server) resetTimer(d time.Duration) {
+	s.timerMu.Lock()
+	defer s.timerMu.Unlock()
+	if s.timer != nil {
+		s.timer.Stop()
+		s.timer = nil
+	}
+	if d > 0 {
+		s.timer = time.AfterFunc(d, s.Stop)
 	}
 }
 
-func (s *Server) handleRequest(req *Request) *Response {
-	switch p := req.Payload.(type) {
-	case *Request_Get:
-		return s.handleGet(p.Get)
-	case *Request_List:
-		return s.handleList()
-	case *Request_Set:
-		return s.handleSet(p.Set)
-	case *Request_Delete:
-		return s.handleDelete(p.Delete)
-	case *Request_Passwd:
-		return s.handlePasswd(p.Passwd)
-	case *Request_Stop:
-		return &Response{Ok: true}
-	default:
-		return &Response{Ok: false, Error: "unknown op"}
-	}
-}
+// --- gRPC service methods ---
 
-func (s *Server) handleGet(req *GetRequest) *Response {
+func (s *Server) Get(_ context.Context, req *GetRequest) (*GetResponse, error) {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 	val, ok := s.data[req.Key]
 	if !ok {
-		return &Response{Ok: false, Error: "key not found"}
+		return nil, status.Error(codes.NotFound, "key not found")
 	}
-	return &Response{Ok: true, Value: val}
+	return &GetResponse{Value: val}, nil
 }
 
-func (s *Server) handleList() *Response {
+func (s *Server) List(_ context.Context, _ *ListRequest) (*ListResponse, error) {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 	keys := make([]string, 0, len(s.data))
@@ -176,17 +164,16 @@ func (s *Server) handleList() *Response {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	return &Response{Ok: true, Keys: keys}
+	return &ListResponse{Keys: keys}, nil
 }
 
-func (s *Server) handleSet(req *SetRequest) *Response {
+func (s *Server) Set(_ context.Context, req *SetRequest) (*SetResponse, error) {
 	s.dataMu.Lock()
 	defer s.dataMu.Unlock()
 
-	// Overwriting an existing key requires the passphrase.
 	if _, exists := s.data[req.Key]; exists {
 		if !s.checkPassphrase(req.Passphrase) {
-			return &Response{Ok: false, Error: ErrPassphraseRequired}
+			return nil, status.Error(codes.PermissionDenied, ErrPassphraseRequired)
 		}
 	}
 
@@ -194,51 +181,63 @@ func (s *Server) handleSet(req *SetRequest) *Response {
 
 	if err := store.SaveData(s.data, s.backend, s.storeDir); err != nil {
 		delete(s.data, req.Key)
-		return &Response{Ok: false, Error: fmt.Sprintf("saving store: %v", err)}
+		return nil, status.Error(codes.Internal, fmt.Sprintf("saving store: %v", err))
 	}
 
-	return &Response{Ok: true}
+	return &SetResponse{}, nil
 }
 
-func (s *Server) handleDelete(req *DeleteRequest) *Response {
+func (s *Server) Delete(_ context.Context, req *DeleteRequest) (*DeleteResponse, error) {
 	s.dataMu.Lock()
 	defer s.dataMu.Unlock()
 
 	if !s.checkPassphrase(req.Passphrase) {
-		return &Response{Ok: false, Error: ErrPassphraseRequired}
+		return nil, status.Error(codes.PermissionDenied, ErrPassphraseRequired)
 	}
 
 	if _, exists := s.data[req.Key]; !exists {
-		return &Response{Ok: false, Error: "key not found"}
+		return nil, status.Error(codes.NotFound, "key not found")
 	}
 
 	delete(s.data, req.Key)
 
 	if err := store.SaveData(s.data, s.backend, s.storeDir); err != nil {
-		return &Response{Ok: false, Error: fmt.Sprintf("saving store: %v", err)}
+		return nil, status.Error(codes.Internal, fmt.Sprintf("saving store: %v", err))
 	}
 
-	return &Response{Ok: true}
+	return &DeleteResponse{}, nil
 }
 
-func (s *Server) handlePasswd(req *PasswdRequest) *Response {
+func (s *Server) Passwd(_ context.Context, req *PasswdRequest) (*PasswdResponse, error) {
 	s.dataMu.Lock()
 	defer s.dataMu.Unlock()
 
 	if !s.checkPassphrase(req.Passphrase) {
-		return &Response{Ok: false, Error: ErrPassphraseRequired}
+		return nil, status.Error(codes.PermissionDenied, ErrPassphraseRequired)
 	}
 
 	newBackend := s.newBackend(req.NewPassphrase)
 
 	if err := store.SaveData(s.data, newBackend, s.storeDir); err != nil {
-		return &Response{Ok: false, Error: fmt.Sprintf("saving store: %v", err)}
+		return nil, status.Error(codes.Internal, fmt.Sprintf("saving store: %v", err))
 	}
 
 	s.passphrase = req.NewPassphrase
 	s.backend = newBackend
 
-	return &Response{Ok: true}
+	return &PasswdResponse{}, nil
+}
+
+func (s *Server) SetAgentTTL(_ context.Context, req *SetAgentTTLRequest) (*SetAgentTTLResponse, error) {
+	if req.Seconds < -1 {
+		return nil, status.Error(codes.InvalidArgument, "TTL must be -1 (stop), 0 (infinite), or >0 (seconds)")
+	}
+	if req.Seconds == -1 {
+		go s.Stop()
+		return &SetAgentTTLResponse{}, nil
+	}
+	s.resetTimer(time.Duration(req.Seconds) * time.Second)
+	return &SetAgentTTLResponse{}, nil
 }
 
 func (s *Server) checkPassphrase(provided string) bool {

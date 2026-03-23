@@ -4,48 +4,40 @@ package agent;
 
 option go_package = "github.com/brickpop/secrets/internal/agent";
 
-// Individual request message types — each carries only the fields it needs.
-
-message GetRequest {
-  string key = 1;
+service Secrets {
+  rpc Get(GetRequest)             returns (GetResponse);
+  rpc List(ListRequest)           returns (ListResponse);
+  rpc Set(SetRequest)             returns (SetResponse);
+  rpc Delete(DeleteRequest)       returns (DeleteResponse);
+  rpc Passwd(PasswdRequest)       returns (PasswdResponse);
+  rpc SetAgentTTL(SetAgentTTLRequest) returns (SetAgentTTLResponse);
 }
 
-message ListRequest {}
+message GetRequest    { string key = 1; }
+message GetResponse   { string value = 1; }
+
+message ListRequest  {}
+message ListResponse { repeated string keys = 1; }
 
 message SetRequest {
   string key        = 1;
   string value      = 2;
   string passphrase = 3;
 }
+message SetResponse {}
 
 message DeleteRequest {
   string key        = 1;
   string passphrase = 2;
 }
+message DeleteResponse {}
 
 message PasswdRequest {
   string passphrase     = 1;
   string new_passphrase = 2;
 }
+message PasswdResponse {}
 
-message StopRequest {}
-
-// Request wraps exactly one operation via oneof.
-message Request {
-  oneof payload {
-    GetRequest    get    = 1;
-    ListRequest   list   = 2;
-    SetRequest    set    = 3;
-    DeleteRequest delete = 4;
-    PasswdRequest passwd = 5;
-    StopRequest   stop   = 6;
-  }
-}
-
-// Response is the same shape for all operations.
-message Response {
-  bool            ok    = 1;
-  string          value = 2;
-  repeated string keys  = 3;
-  string          error = 4;
-}
+// seconds: -1 = stop immediately, 0 = no expiry, >0 = lifetime in seconds
+message SetAgentTTLRequest  { int64 seconds = 1; }
+message SetAgentTTLResponse {}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -23,7 +25,7 @@ type daemonPayload struct {
 var agentTTL string
 
 func init() {
-	agentCmd.Flags().StringVar(&agentTTL, "ttl", "8h", "Agent lifetime (e.g. 8h, 30m, 0 for unlimited)")
+	agentCmd.Flags().StringVar(&agentTTL, "ttl", "8h", "Agent lifetime (e.g. 30m, 5h, 10d, 0 for unlimited)")
 	agentCmd.AddCommand(agentStopCmd)
 	rootCmd.AddCommand(agentCmd)
 }
@@ -33,13 +35,24 @@ var agentCmd = &cobra.Command{
 	Short: "Start the background agent",
 	Long: `Start a background agent that holds the decrypted store in memory.
 Most commands auto-start the agent transparently. Use this command
-to set an explicit TTL.`,
+to set an explicit TTL, or to update the TTL of a running agent.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sockPath := agentSocketPath()
 
 		if agent.IsRunning(sockPath) {
-			fmt.Fprintln(os.Stderr, "Agent already running.")
+			if !cmd.Flags().Changed("ttl") {
+				fmt.Fprintln(os.Stderr, "Agent already running.")
+				return nil
+			}
+			ttl, err := parseTTLSeconds(agentTTL)
+			if err != nil {
+				return UserError(fmt.Sprintf("Invalid TTL: %v", err))
+			}
+			if err := agent.SetAgentTTL(sockPath, ttl); err != nil {
+				return InternalError(fmt.Sprintf("updating agent TTL: %v", err))
+			}
+			fmt.Fprintln(os.Stderr, "Agent TTL updated.")
 			return nil
 		}
 
@@ -48,7 +61,7 @@ to set an explicit TTL.`,
 			return runDaemon(sockPath)
 		}
 
-		ttl, err := parseTTL(agentTTL)
+		ttl, err := parseTTLSeconds(agentTTL)
 		if err != nil {
 			return UserError(fmt.Sprintf("Invalid TTL: %v", err))
 		}
@@ -84,7 +97,7 @@ var agentStopCmd = &cobra.Command{
 
 // startAgent decrypts the store, spawns the daemon, and waits for the socket.
 // Returns the socket path. Used by both `secrets agent` and ensureAgent().
-func startAgent(ttl time.Duration) (string, error) {
+func startAgent(ttl int64) (string, error) {
 	if !store.Exists() {
 		return "", UserError("No store found. Run 'secrets init' to create one.")
 	}
@@ -135,7 +148,7 @@ func startAgent(ttl time.Duration) (string, error) {
 
 // launchDaemon spawns the agent daemon with already-decrypted data.
 // Used by startAgent (after decrypting from disk) and init (data already in memory).
-func launchDaemon(data map[string]string, passphrase string, ttl time.Duration) (string, error) {
+func launchDaemon(data map[string]string, passphrase string, ttl int64) (string, error) {
 	sockPath := agentSocketPath()
 
 	// Build daemon payload with passphrase
@@ -166,10 +179,7 @@ func launchDaemon(data map[string]string, passphrase string, ttl time.Duration) 
 		return "", InternalError(fmt.Sprintf("finding executable: %v", err))
 	}
 
-	ttlStr := fmt.Sprintf("%s", ttl)
-	if ttl == 0 {
-		ttlStr = "0"
-	}
+	ttlStr := strconv.FormatInt(ttl, 10)
 
 	daemonCmd := exec.Command(self, "agent", "--ttl", ttlStr)
 	daemonCmd.Env = append(os.Environ(),
@@ -219,19 +229,45 @@ func runDaemon(sockPath string) error {
 		rawPayload[i] = 0
 	}
 
-	ttl, err := parseTTL(agentTTL)
+	ttl, err := parseTTLSeconds(agentTTL)
 	if err != nil {
-		ttl = 8 * time.Hour
+		ttl = defaultAgentTTL
 	}
 
 	backend := agebackend.New(payload.Passphrase)
 	srv := agent.NewServer(payload.Data, sockPath, payload.Passphrase, backend, agebackend.NewBackend, store.Dir())
-	return srv.Start(ttl)
+	return srv.Start(time.Duration(ttl) * time.Second)
 }
 
-func parseTTL(s string) (time.Duration, error) {
+// parseTTLSeconds parses a TTL string into seconds.
+// Accepts: plain integer (seconds), or suffixed values: s, m, h (via time.ParseDuration), d (days).
+// 0 means infinite. Negative values are not allowed (use agent stop to stop).
+func parseTTLSeconds(s string) (int64, error) {
 	if s == "0" {
 		return 0, nil
 	}
-	return time.ParseDuration(s)
+	// Days suffix (not supported by time.ParseDuration)
+	if strings.HasSuffix(s, "d") {
+		n, err := strconv.ParseInt(strings.TrimSuffix(s, "d"), 10, 64)
+		if err != nil || n < 0 {
+			return 0, fmt.Errorf("invalid TTL %q", s)
+		}
+		return n * 86400, nil
+	}
+	// Plain integer = seconds
+	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+		if n < 0 {
+			return 0, fmt.Errorf("TTL must be >= 0")
+		}
+		return n, nil
+	}
+	// Standard duration (s, m, h)
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("invalid TTL %q", s)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("TTL must be >= 0")
+	}
+	return int64(d / time.Second), nil
 }

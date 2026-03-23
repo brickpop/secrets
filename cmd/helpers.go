@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/brickpop/secrets/internal/agent"
 	"github.com/brickpop/secrets/internal/prompt"
 	"github.com/brickpop/secrets/internal/store"
 )
 
-const defaultAgentTTL = 8 * time.Hour
+const defaultAgentTTL int64 = 8 * 60 * 60 // 8 hours in seconds
 
 // stdinPrompt is a lazily-initialized Prompter backed by os.Stdin.
 // All code must use this instead of prompt.New(os.Stdin, ...) to avoid
