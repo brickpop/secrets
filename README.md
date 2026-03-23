@@ -56,27 +56,33 @@ eval "$(secrets resolve)"
 
 ## Agent
 
-The agent holds the decrypted store in memory so you only enter your passphrase once per session. Every command auto-starts it if it isn't running — you never manage the agent manually unless you want explicit TTL control:
+The agent holds the decrypted store in memory so you only enter your passphrase once per session. Every command auto-starts it on first use, prompting for the passphrase once. After that, secrets are served from memory for 8 hours.
+
+You only interact with it directly if you want to adjust the lifetime or stop it early:
 
 ```sh
-secrets agent --ttl 12h   # start with explicit lifetime
-secrets agent stop        # stop early
+secrets agent --ttl 4h    # restart with a shorter lifetime
+secrets agent --ttl 0     # no expiry
+secrets agent stop        # wipe memory and exit now
 ```
 
-The agent expires after 8 hours by default. Override with `--ttl`:
+## Usage modes
+
+### 1. Standalone — on demand
+
+No project files needed. Just use the store directly:
 
 ```sh
-secrets agent --ttl 12h   # 12 hours
-secrets agent --ttl 0     # unlimited
+secrets set PRIVATE_KEY
+secrets get PRIVATE_KEY
+secrets ls
 ```
 
-## The two-file design
+Useful for one-off lookups or scripts that pull individual secrets.
 
-Each project that uses `secrets` has up to two files:
+### 2. Project — `.secrets.yaml`
 
-### `.secrets.yaml` — committed to git
-
-Lists the environment variable names that the project expects from the store. Contains no secrets.
+Add a manifest to your project (commit it — it contains no secrets):
 
 ```yaml
 project: myproject
@@ -86,9 +92,17 @@ keys:
   - ETHERSCAN_API
 ```
 
-### `.secrets-map.yaml` — git-ignored, never committed
+Then load all of them at once:
 
-A personal remapping file. Only needed when your store key differs from the variable name.
+```sh
+eval "$(secrets resolve)"
+```
+
+The store key name must match the environment variable name. If your store uses different names, see mode 3.
+
+### 3. Project with remapped names — `.secrets-map.yaml`
+
+A local file (git-ignored) that maps local variable names to store keys. Only needed when the names differ:
 
 ```yaml
 PRIVATE_KEY: PRIVATE_KEY_alice_hw
@@ -101,7 +115,7 @@ Add to `.gitignore`:
 .secrets-map.yaml
 ```
 
-For each variable in `keys`, `secrets resolve` checks the map file first. If no mapping exists, the variable name is used directly as the store key.
+`secrets resolve` checks this file first. If no mapping exists for a key, the variable name is used directly as the store key. The `.secrets.yaml` is still the source of truth for which variables the project needs — the map file is purely personal.
 
 ## Justfile integration
 
@@ -140,8 +154,8 @@ Projects that don't use `secrets` continue working with `.env` files as before.
 | `secrets passwd` | Change the store passphrase |
 | `secrets resolve` | Resolve manifest keys and print as shell variables |
 | `secrets dump` | Dump all secrets (debugging/migration) |
-| `secrets agent` | Start the background agent |
-| `secrets agent stop` | Stop the agent |
+| `secrets agent [--ttl N]` | Adjust agent lifetime (optional — auto-started by every command) |
+| `secrets agent stop` | Wipe memory and stop the agent |
 
 ### Resolve flags
 
