@@ -24,8 +24,9 @@ const (
 	Secrets_Set_FullMethodName         = "/agent.Secrets/Set"
 	Secrets_Delete_FullMethodName      = "/agent.Secrets/Delete"
 	Secrets_Passwd_FullMethodName      = "/agent.Secrets/Passwd"
-	Secrets_SetAgentTTL_FullMethodName = "/agent.Secrets/SetAgentTTL"
 	Secrets_Rename_FullMethodName      = "/agent.Secrets/Rename"
+	Secrets_History_FullMethodName     = "/agent.Secrets/History"
+	Secrets_SetAgentTTL_FullMethodName = "/agent.Secrets/SetAgentTTL"
 )
 
 // SecretsClient is the client API for Secrets service.
@@ -37,8 +38,9 @@ type SecretsClient interface {
 	Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error)
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 	Passwd(ctx context.Context, in *PasswdRequest, opts ...grpc.CallOption) (*PasswdResponse, error)
-	SetAgentTTL(ctx context.Context, in *SetAgentTTLRequest, opts ...grpc.CallOption) (*SetAgentTTLResponse, error)
 	Rename(ctx context.Context, in *RenameRequest, opts ...grpc.CallOption) (*RenameResponse, error)
+	History(ctx context.Context, in *HistoryRequest, opts ...grpc.CallOption) (*HistoryResponse, error)
+	SetAgentTTL(ctx context.Context, in *SetAgentTTLRequest, opts ...grpc.CallOption) (*SetAgentTTLResponse, error)
 }
 
 type secretsClient struct {
@@ -99,20 +101,30 @@ func (c *secretsClient) Passwd(ctx context.Context, in *PasswdRequest, opts ...g
 	return out, nil
 }
 
-func (c *secretsClient) SetAgentTTL(ctx context.Context, in *SetAgentTTLRequest, opts ...grpc.CallOption) (*SetAgentTTLResponse, error) {
+func (c *secretsClient) Rename(ctx context.Context, in *RenameRequest, opts ...grpc.CallOption) (*RenameResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SetAgentTTLResponse)
-	err := c.cc.Invoke(ctx, Secrets_SetAgentTTL_FullMethodName, in, out, cOpts...)
+	out := new(RenameResponse)
+	err := c.cc.Invoke(ctx, Secrets_Rename_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *secretsClient) Rename(ctx context.Context, in *RenameRequest, opts ...grpc.CallOption) (*RenameResponse, error) {
+func (c *secretsClient) History(ctx context.Context, in *HistoryRequest, opts ...grpc.CallOption) (*HistoryResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RenameResponse)
-	err := c.cc.Invoke(ctx, Secrets_Rename_FullMethodName, in, out, cOpts...)
+	out := new(HistoryResponse)
+	err := c.cc.Invoke(ctx, Secrets_History_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *secretsClient) SetAgentTTL(ctx context.Context, in *SetAgentTTLRequest, opts ...grpc.CallOption) (*SetAgentTTLResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetAgentTTLResponse)
+	err := c.cc.Invoke(ctx, Secrets_SetAgentTTL_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -128,8 +140,9 @@ type SecretsServer interface {
 	Set(context.Context, *SetRequest) (*SetResponse, error)
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
 	Passwd(context.Context, *PasswdRequest) (*PasswdResponse, error)
-	SetAgentTTL(context.Context, *SetAgentTTLRequest) (*SetAgentTTLResponse, error)
 	Rename(context.Context, *RenameRequest) (*RenameResponse, error)
+	History(context.Context, *HistoryRequest) (*HistoryResponse, error)
+	SetAgentTTL(context.Context, *SetAgentTTLRequest) (*SetAgentTTLResponse, error)
 	mustEmbedUnimplementedSecretsServer()
 }
 
@@ -155,11 +168,14 @@ func (UnimplementedSecretsServer) Delete(context.Context, *DeleteRequest) (*Dele
 func (UnimplementedSecretsServer) Passwd(context.Context, *PasswdRequest) (*PasswdResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Passwd not implemented")
 }
-func (UnimplementedSecretsServer) SetAgentTTL(context.Context, *SetAgentTTLRequest) (*SetAgentTTLResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method SetAgentTTL not implemented")
-}
 func (UnimplementedSecretsServer) Rename(context.Context, *RenameRequest) (*RenameResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Rename not implemented")
+}
+func (UnimplementedSecretsServer) History(context.Context, *HistoryRequest) (*HistoryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method History not implemented")
+}
+func (UnimplementedSecretsServer) SetAgentTTL(context.Context, *SetAgentTTLRequest) (*SetAgentTTLResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetAgentTTL not implemented")
 }
 func (UnimplementedSecretsServer) mustEmbedUnimplementedSecretsServer() {}
 func (UnimplementedSecretsServer) testEmbeddedByValue()                 {}
@@ -272,24 +288,6 @@ func _Secrets_Passwd_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Secrets_SetAgentTTL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SetAgentTTLRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SecretsServer).SetAgentTTL(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Secrets_SetAgentTTL_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SecretsServer).SetAgentTTL(ctx, req.(*SetAgentTTLRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _Secrets_Rename_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RenameRequest)
 	if err := dec(in); err != nil {
@@ -304,6 +302,42 @@ func _Secrets_Rename_Handler(srv interface{}, ctx context.Context, dec func(inte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SecretsServer).Rename(ctx, req.(*RenameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Secrets_History_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SecretsServer).History(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Secrets_History_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SecretsServer).History(ctx, req.(*HistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Secrets_SetAgentTTL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetAgentTTLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SecretsServer).SetAgentTTL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Secrets_SetAgentTTL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SecretsServer).SetAgentTTL(ctx, req.(*SetAgentTTLRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -336,12 +370,16 @@ var Secrets_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Secrets_Passwd_Handler,
 		},
 		{
-			MethodName: "SetAgentTTL",
-			Handler:    _Secrets_SetAgentTTL_Handler,
-		},
-		{
 			MethodName: "Rename",
 			Handler:    _Secrets_Rename_Handler,
+		},
+		{
+			MethodName: "History",
+			Handler:    _Secrets_History_Handler,
+		},
+		{
+			MethodName: "SetAgentTTL",
+			Handler:    _Secrets_SetAgentTTL_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

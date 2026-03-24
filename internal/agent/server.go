@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -161,7 +163,9 @@ func (s *Server) List(_ context.Context, _ *ListRequest) (*ListResponse, error) 
 	defer s.dataMu.RUnlock()
 	keys := make([]string, 0, len(s.data))
 	for k := range s.data {
-		keys = append(keys, k)
+		if !isHistoryKey(k) {
+			keys = append(keys, k)
+		}
 	}
 	sort.Strings(keys)
 	return &ListResponse{Keys: keys}, nil
@@ -171,10 +175,14 @@ func (s *Server) Set(_ context.Context, req *SetRequest) (*SetResponse, error) {
 	s.dataMu.Lock()
 	defer s.dataMu.Unlock()
 
-	if _, exists := s.data[req.Key]; exists {
+	old, exists := s.data[req.Key]
+	if exists {
 		if !s.checkPassphrase(req.Passphrase) {
 			return nil, status.Error(codes.PermissionDenied, ErrPassphraseRequired)
 		}
+		// Record old value as history before overwriting.
+		n := nextHistorySuffix(s.data, req.Key)
+		s.data[req.Key+"~"+strconv.Itoa(n)] = old
 	}
 
 	s.data[req.Key] = req.Value
@@ -200,6 +208,9 @@ func (s *Server) Delete(_ context.Context, req *DeleteRequest) (*DeleteResponse,
 	}
 
 	delete(s.data, req.Key)
+	for _, hk := range historyKeys(s.data, req.Key) {
+		delete(s.data, hk)
+	}
 
 	if err := store.SaveData(s.data, s.backend, s.storeDir); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("saving store: %v", err))
@@ -244,13 +255,30 @@ func (s *Server) Rename(_ context.Context, req *RenameRequest) (*RenameResponse,
 		return nil, status.Error(codes.AlreadyExists, "key already exists: "+req.To)
 	}
 
+	// Collect history entries before mutating.
+	histEntries := historyKeys(s.data, req.From)
+	histValues := make(map[string]string, len(histEntries))
+	for _, hk := range histEntries {
+		histValues[hk] = s.data[hk]
+	}
+
 	s.data[req.To] = val
 	delete(s.data, req.From)
+	for _, hk := range histEntries {
+		suffix := hk[len(req.From):] // "~N"
+		s.data[req.To+suffix] = s.data[hk]
+		delete(s.data, hk)
+	}
 
 	if err := store.SaveData(s.data, s.backend, s.storeDir); err != nil {
-		// Rollback in-memory state
+		// Rollback in-memory state.
 		s.data[req.From] = val
 		delete(s.data, req.To)
+		for _, hk := range histEntries {
+			suffix := hk[len(req.From):]
+			delete(s.data, req.To+suffix)
+			s.data[hk] = histValues[hk]
+		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("saving store: %v", err))
 	}
 
@@ -269,6 +297,68 @@ func (s *Server) SetAgentTTL(_ context.Context, req *SetAgentTTLRequest) (*SetAg
 	return &SetAgentTTLResponse{}, nil
 }
 
+func (s *Server) History(_ context.Context, req *HistoryRequest) (*HistoryResponse, error) {
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
+
+	hkeys := historyKeys(s.data, req.Key)
+	n := len(hkeys)
+	keys := make([]string, n)
+	values := make([]string, n)
+	// Return newest first (reverse order of ascending suffixes).
+	for i, k := range hkeys {
+		keys[n-1-i] = k
+		values[n-1-i] = s.data[k]
+	}
+	return &HistoryResponse{Keys: keys, Values: values}, nil
+}
+
 func (s *Server) checkPassphrase(provided string) bool {
 	return subtle.ConstantTimeCompare([]byte(s.passphrase), []byte(provided)) == 1
 }
+
+// --- History helpers ---
+
+// isHistoryKey returns true if key is a history entry (contains '~').
+func isHistoryKey(key string) bool {
+	return strings.ContainsRune(key, '~')
+}
+
+// historyKeys returns all history entry keys for the given base key,
+// sorted ascending by their numeric suffix (oldest first).
+func historyKeys(data map[string]string, base string) []string {
+	prefix := base + "~"
+	var keys []string
+	for k := range data {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return parseHistorySuffix(keys[i]) < parseHistorySuffix(keys[j])
+	})
+	return keys
+}
+
+// parseHistorySuffix returns the numeric suffix N from "KEY~N", or -1 if unparseable.
+func parseHistorySuffix(key string) int {
+	i := strings.LastIndexByte(key, '~')
+	if i < 0 {
+		return -1
+	}
+	n, err := strconv.Atoi(key[i+1:])
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+// nextHistorySuffix returns the next suffix for a new history entry.
+func nextHistorySuffix(data map[string]string, base string) int {
+	keys := historyKeys(data, base)
+	if len(keys) == 0 {
+		return 1
+	}
+	return parseHistorySuffix(keys[len(keys)-1]) + 1
+}
+

@@ -97,7 +97,7 @@ func Set(sockPath, key, value, passphrase string) error {
 	return statusMsg(err)
 }
 
-// Delete removes a key via the agent. Passphrase is always required.
+// Delete removes a key and its history via the agent. Passphrase is always required.
 func Delete(sockPath, key, passphrase string) error {
 	conn, err := newConn(sockPath)
 	if err != nil {
@@ -110,6 +110,25 @@ func Delete(sockPath, key, passphrase string) error {
 
 	_, err = NewSecretsClient(conn).Delete(ctx, &DeleteRequest{Key: key, Passphrase: passphrase})
 	return statusMsg(err)
+}
+
+// History retrieves the value history for a key, newest first.
+// Returns parallel slices of store key names (e.g. "RPC_URL~3") and their values.
+func History(sockPath, key string) (keys, values []string, err error) {
+	conn, connErr := newConn(sockPath)
+	if connErr != nil {
+		return nil, nil, fmt.Errorf("connecting to agent: %w", connErr)
+	}
+	defer conn.Close()
+
+	ctx, cancel := ctx30s()
+	defer cancel()
+
+	resp, rpcErr := NewSecretsClient(conn).History(ctx, &HistoryRequest{Key: key})
+	if rpcErr != nil {
+		return nil, nil, statusMsg(rpcErr)
+	}
+	return resp.Keys, resp.Values, nil
 }
 
 // Passwd changes the store passphrase via the agent.

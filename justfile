@@ -165,6 +165,16 @@ smoke: build
     DUMP_OUT=$($BIN dump --format dotenv 2>/dev/null)
     echo "$DUMP_OUT" | grep -q "ETHERSCAN_API"
 
+    echo "--- history ---"
+    $BIN set RPC_URL https://rpc-v2.example.com
+    HIST=$($BIN history RPC_URL)
+    echo "$HIST" | grep -q "RPC_URL~2:"
+    echo "$HIST" | grep -q "https://rpc.example.com"
+    echo "$HIST" | grep -q "RPC_URL~1:"
+    echo "$HIST" | grep -q "https://rpc-v2.example.com"
+    # history entries must not appear in ls
+    test "$($BIN ls | wc -l)" -eq 3
+
     echo "--- rm ---"
     $BIN rm ETHERSCAN_API --force
     test "$($BIN ls | wc -l)" -eq 2

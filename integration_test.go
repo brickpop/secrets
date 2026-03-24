@@ -984,3 +984,95 @@ func TestIntegration_Ls_All(t *testing.T) {
 		t.Fatalf("ls should only show unscoped keys, got: %v", lines)
 	}
 }
+
+func TestIntegration_History_RecordedOnOverwrite(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "RPC_URL", "https://v1.example.com")
+	r.mustRun("set", "--overwrite", "RPC_URL", "https://v2.example.com")
+	r.mustRun("set", "--overwrite", "RPC_URL", "https://v3.example.com")
+
+	out := r.mustRun("history", "RPC_URL")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("history should have 2 entries, got: %v", lines)
+	}
+	// Newest first: RPC_URL~2 then RPC_URL~1
+	if !strings.HasPrefix(lines[0], "RPC_URL~2:") {
+		t.Fatalf("first history line should be RPC_URL~2, got: %s", lines[0])
+	}
+	if !strings.Contains(lines[0], "https://v2.example.com") {
+		t.Fatalf("first history line should contain v2, got: %s", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "RPC_URL~1:") {
+		t.Fatalf("second history line should be RPC_URL~1, got: %s", lines[1])
+	}
+	if !strings.Contains(lines[1], "https://v1.example.com") {
+		t.Fatalf("second history line should contain v1, got: %s", lines[1])
+	}
+}
+
+func TestIntegration_History_NotInLs(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "KEY", "v1")
+	r.mustRun("set", "--overwrite", "KEY", "v2")
+
+	out := r.mustRun("ls", "--all")
+	if strings.Contains(out, "~") {
+		t.Fatalf("ls --all should not show history entries, got: %s", out)
+	}
+}
+
+func TestIntegration_History_DeleteCascades(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "KEY", "v1")
+	r.mustRun("set", "--overwrite", "KEY", "v2")
+	r.mustRun("rm", "--force", "KEY")
+
+	// History should be empty
+	out := r.mustRun("history", "KEY")
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("history should be empty after rm, got: %s", out)
+	}
+}
+
+func TestIntegration_History_MvCarriesHistory(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "OLD_KEY", "v1")
+	r.mustRun("set", "--overwrite", "OLD_KEY", "v2")
+	r.mustRun("mv", "OLD_KEY", "NEW_KEY")
+
+	// History under new name
+	out := r.mustRun("history", "NEW_KEY")
+	if !strings.Contains(out, "NEW_KEY~1:") {
+		t.Fatalf("history should be under NEW_KEY after mv, got: %s", out)
+	}
+	if !strings.Contains(out, "v1") {
+		t.Fatalf("history should contain original value, got: %s", out)
+	}
+
+	// Old name has no history
+	out = r.mustRun("history", "OLD_KEY")
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("OLD_KEY should have no history after mv, got: %s", out)
+	}
+}
+
+func TestIntegration_History_EmptyForNewKey(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "KEY", "v1")
+
+	out := r.mustRun("history", "KEY")
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("new key should have no history, got: %s", out)
+	}
+}

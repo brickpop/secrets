@@ -36,6 +36,10 @@ shell history).`,
 
 		key := args[0]
 
+		if strings.ContainsRune(key, '~') {
+			return UserError("key names may not contain '~' (reserved for history entries)")
+		}
+
 		var value string
 		if len(args) == 2 {
 			value = args[1]

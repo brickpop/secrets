@@ -527,6 +527,132 @@ func TestConcurrentSets(t *testing.T) {
 	}
 }
 
+// --- History tests ---
+
+func TestHistory_RecordedOnOverwrite(t *testing.T) {
+	sockPath, srv := startTestServer(t, map[string]string{
+		"KEY": "v1",
+	}, "secret", 0)
+	defer srv.Stop()
+
+	if err := Set(sockPath, "KEY", "v2", "secret"); err != nil {
+		t.Fatalf("Set v2: %v", err)
+	}
+	if err := Set(sockPath, "KEY", "v3", "secret"); err != nil {
+		t.Fatalf("Set v3: %v", err)
+	}
+
+	hkeys, hvals, err := History(sockPath, "KEY")
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	// Expected newest first: v2 (pushed by v3), v1 (pushed by v2)
+	if len(hvals) != 2 {
+		t.Fatalf("History len = %d, want 2", len(hvals))
+	}
+	if hvals[0] != "v2" || hvals[1] != "v1" {
+		t.Fatalf("History values = %v, want [v2 v1]", hvals)
+	}
+	// Keys should be actual store key names
+	if hkeys[0] != "KEY~2" || hkeys[1] != "KEY~1" {
+		t.Fatalf("History keys = %v, want [KEY~2 KEY~1]", hkeys)
+	}
+}
+
+func TestHistory_NotInList(t *testing.T) {
+	sockPath, srv := startTestServer(t, map[string]string{
+		"KEY": "v1",
+	}, "secret", 0)
+	defer srv.Stop()
+
+	if err := Set(sockPath, "KEY", "v2", "secret"); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	keys, err := List(sockPath)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, k := range keys {
+		if strings.ContainsRune(k, '~') {
+			t.Fatalf("List returned history key %q", k)
+		}
+	}
+}
+
+func TestHistory_DeleteCascades(t *testing.T) {
+	sockPath, srv := startTestServer(t, map[string]string{
+		"KEY": "v1",
+	}, "secret", 0)
+	defer srv.Stop()
+
+	if err := Set(sockPath, "KEY", "v2", "secret"); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	if err := Delete(sockPath, "KEY", "secret"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	_, hvals, err := History(sockPath, "KEY")
+	if err != nil {
+		t.Fatalf("History after delete: %v", err)
+	}
+	if len(hvals) != 0 {
+		t.Fatalf("History should be empty after cascade delete, got %v", hvals)
+	}
+}
+
+
+func TestHistory_RenameCarriesHistory(t *testing.T) {
+	sockPath, srv := startTestServer(t, map[string]string{
+		"OLD": "v1",
+	}, "secret", 0)
+	defer srv.Stop()
+
+	if err := Set(sockPath, "OLD", "v2", "secret"); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	if err := Rename(sockPath, "OLD", "NEW", "secret"); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+
+	hkeys, hvals, err := History(sockPath, "NEW")
+	if err != nil {
+		t.Fatalf("History NEW: %v", err)
+	}
+	if len(hvals) != 1 || hvals[0] != "v1" {
+		t.Fatalf("NEW history values = %v, want [v1]", hvals)
+	}
+	if hkeys[0] != "NEW~1" {
+		t.Fatalf("NEW history key = %q, want NEW~1", hkeys[0])
+	}
+
+	// OLD history should be gone
+	_, oldVals, _ := History(sockPath, "OLD")
+	if len(oldVals) != 0 {
+		t.Fatalf("OLD history should be empty after rename, got %v", oldVals)
+	}
+}
+
+func TestHistory_EmptyForNewKey(t *testing.T) {
+	sockPath, srv := startTestServer(t, map[string]string{}, "", 0)
+	defer srv.Stop()
+
+	if err := Set(sockPath, "KEY", "v1", ""); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	_, hvals, err := History(sockPath, "KEY")
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if len(hvals) != 0 {
+		t.Fatalf("New key should have no history, got %v", hvals)
+	}
+}
+
 func TestSetPersistsToDisk(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := t.TempDir()
