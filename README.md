@@ -29,7 +29,7 @@ go install github.com/brickpop/secrets@latest
 curl -L https://github.com/brickpop/secrets/releases/latest/download/secrets_darwin_arm64.tar.gz | tar xz
 sudo mv secrets /usr/local/bin/
 
-# Linux (amd64)
+# Linux / WSL (amd64)
 curl -L https://github.com/brickpop/secrets/releases/latest/download/secrets_linux_amd64.tar.gz | tar xz
 sudo mv secrets /usr/local/bin/
 ```
