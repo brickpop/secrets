@@ -213,12 +213,12 @@ Conflicts are handled interactively (skip, overwrite). Use `--skip` or `--overwr
 `secrets` resolves to plain env vars, so it composes with anything. If your team uses 1Password, you can sync keys from it using the `op` CLI:
 
 ```sh
-# justfile — sync secrets from 1Password (skip if values haven't changed)
+# justfile — sync secrets from 1Password (nop if values didn't change)
 sync-from-op:
     #!/usr/bin/env bash
-    secrets set --skip dev/RPC_URL        "$(op read 'op://dev/rpc/url')"
-    secrets set --skip dev/PRIVATE_KEY    "$(op read 'op://dev/wallet/private-key')"
-    secrets set --skip ETHERSCAN_API_KEY  "$(op read 'op://etherscan/api-key')"
+    secrets set dev/RPC_URL        "$(op read 'op://dev/rpc/url')"
+    secrets set dev/PRIVATE_KEY    "$(op read 'op://dev/wallet/private-key')"
+    secrets set ETHERSCAN_API_KEY  "$(op read 'op://etherscan/api-key')"
 ```
 
 Run the recipe during onboarding or after a rotation. Keys already present are left untouched (`--skip`); use `--overwrite` to force an update.
