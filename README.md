@@ -30,11 +30,7 @@ sudo mv secrets /usr/local/bin/
 
 ## The basics — your personal store
 
-Start by creating an encrypted store. An encryption passphrase can be chosen — press enter for none.
-
-```sh
-secrets init
-```
+Just start using it. The first command automatically sets up an encrypted store and walks you through choosing a passphrase (optional).
 
 Store values:
 
@@ -256,7 +252,6 @@ secrets get RPC_URL~2
 
 | Command | Description |
 |---------|-------------|
-| `secrets init` | Create the encrypted store |
 | `secrets set <key> [value]` | Add or update a secret |
 | `secrets get <key>` | Print a secret to stdout |
 | `secrets resolve` | Resolve project secrets and print as shell exports |

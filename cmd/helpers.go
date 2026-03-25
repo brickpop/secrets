@@ -56,6 +56,32 @@ func withPassphrase(fn func(passphrase string) error) error {
 	return fn(pass)
 }
 
+// createStore walks the user through creating the store for the first time.
+// Called by startAgent when no store exists yet.
+// Returns the chosen passphrase so the caller can launch the daemon.
+func createStore() (string, error) {
+	fmt.Fprintf(os.Stderr, "No store found — let's create one.\n\n")
+	fmt.Fprintf(os.Stderr, "Your environment variables will be kept in an encrypted file at:\n")
+	fmt.Fprintf(os.Stderr, "  %s\n\n", store.FilePath())
+	fmt.Fprintf(os.Stderr, "A passphrase adds an extra layer of protection (optional).\n")
+	fmt.Fprintf(os.Stderr, "You can add or change it at any time with `secrets passwd`.\n\n")
+
+	passphrase, err := stdinPrompter().PassphraseConfirm(
+		"Passphrase (leave empty for none): ",
+		"Confirm passphrase: ",
+	)
+	if err != nil {
+		return "", UserError(err.Error())
+	}
+
+	if err := store.Init(agebackend.New(passphrase)); err != nil {
+		return "", InternalError(err.Error())
+	}
+
+	fmt.Fprintf(os.Stderr, "\nStore created. Starting agent...\n")
+	return passphrase, nil
+}
+
 // agentSocketPath returns the agent socket path.
 func agentSocketPath() string {
 	if sock := os.Getenv("SECRETS_AGENT_SOCK"); sock != "" {

@@ -99,7 +99,11 @@ var agentStopCmd = &cobra.Command{
 // Returns the socket path. Used by both `secrets agent` and ensureAgent().
 func startAgent(ttl int64) (string, error) {
 	if !store.Exists() {
-		return "", UserError("No store found. Run 'secrets init' to create one.")
+		passphrase, err := createStore()
+		if err != nil {
+			return "", err
+		}
+		return launchDaemon(map[string]string{}, passphrase, ttl)
 	}
 
 	ciphertext, err := os.ReadFile(store.FilePath())
