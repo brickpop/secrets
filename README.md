@@ -241,7 +241,14 @@ secrets history RPC_URL
 # RPC_URL~1:	https://rpc-old.example.com
 ```
 
-The label matches the actual key stored. In the example, `RPC_URL~3` is the most recent backup, `RPC_URL~1` is the oldest.
+In the example, `RPC_URL~3` is the most recent backup, `RPC_URL~1` is the oldest.
+
+The label matches the key internally stored. Backups are hidden when using `ls`, `resolve` or `dump`, but they can be accessed if needed:
+
+```sh
+secrets get RPC_URL~2
+# https://rpc-v1.example.com
+```
 
 ---
 
