@@ -10,10 +10,14 @@ import (
 	"github.com/vars-cli/vars/internal/format"
 )
 
-var dumpFormat string
+var (
+	dumpFish   bool
+	dumpDotenv bool
+)
 
 func init() {
-	dumpCmd.Flags().StringVar(&dumpFormat, "format", "posix", "Output format: posix, fish, dotenv")
+	dumpCmd.Flags().BoolVar(&dumpDotenv, "dotenv", false, "Output as KEY=value (for docker --env-file etc.)")
+	dumpCmd.Flags().BoolVar(&dumpFish, "fish", false, "Output in fish shell format (set -x KEY value)")
 	rootCmd.AddCommand(dumpCmd)
 }
 
@@ -24,9 +28,11 @@ var dumpCmd = &cobra.Command{
 Intended for debugging and migration only.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		formatter, err := format.Get(dumpFormat)
-		if err != nil {
-			return UserError(err.Error())
+		formatter := format.Posix
+		if dumpFish {
+			formatter = format.Fish
+		} else if dumpDotenv {
+			formatter = format.Dotenv
 		}
 
 		fmt.Fprintln(os.Stderr, "Warning: dumping all variables from the store.")

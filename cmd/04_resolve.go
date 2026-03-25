@@ -14,15 +14,17 @@ import (
 )
 
 var (
-	resolveFormat  string
+	resolveFish    bool
+	resolveDotenv  bool
 	resolveFile    string
 	resolvePartial bool
 	resolveProfile string
 )
 
 func init() {
-	resolveCmd.Flags().StringVar(&resolveFormat, "format", "posix", "Output format: posix, fish, dotenv")
-	resolveCmd.Flags().StringVarP(&resolveFile, "file", "f", ".vars.yaml", "Path to manifest file")
+	resolveCmd.Flags().BoolVar(&resolveDotenv, "dotenv", false, "Output as KEY=value")
+	resolveCmd.Flags().BoolVar(&resolveFish, "fish", false, "Output in fish shell format")
+	resolveCmd.Flags().StringVarP(&resolveFile, "file", "f", ".vars.yaml", "Path to the manifest file")
 	resolveCmd.Flags().BoolVar(&resolvePartial, "partial", false, "Export empty values for missing keys instead of erroring")
 	resolveCmd.Flags().StringVarP(&resolveProfile, "profile", "p", "", "Active profile name")
 	rootCmd.AddCommand(resolveCmd)
@@ -35,7 +37,6 @@ var resolveCmd = &cobra.Command{
 shell-source-able lines to stdout.
 
   eval "$(vars resolve)"
-  vars resolve --format fish | source
   vars resolve --profile mainnet
 
 Resolution priority (per key):
@@ -46,9 +47,11 @@ Resolution priority (per key):
   5. Bare key (identity)`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		formatter, err := format.Get(resolveFormat)
-		if err != nil {
-			return UserError(err.Error())
+		formatter := format.Posix
+		if resolveFish {
+			formatter = format.Fish
+		} else if resolveDotenv {
+			formatter = format.Dotenv
 		}
 
 		localPath := filepath.Join(filepath.Dir(resolveFile), ".vars.local.yaml")

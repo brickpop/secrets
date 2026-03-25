@@ -12,12 +12,12 @@ import (
 )
 
 var (
-	setOverwrite bool
-	setSkip      bool
+	setForce bool
+	setSkip  bool
 )
 
 func init() {
-	setCmd.Flags().BoolVar(&setOverwrite, "overwrite", false, "Overwrite existing key without prompting")
+	setCmd.Flags().BoolVarP(&setForce, "force", "f", false, "Overwrite existing key without prompting")
 	setCmd.Flags().BoolVar(&setSkip, "skip", false, "Skip if key already exists")
 	rootCmd.AddCommand(setCmd)
 }
@@ -30,8 +30,8 @@ interactively with echo disabled (preferred — inline values appear in
 shell history).`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if setOverwrite && setSkip {
-			return UserError("--overwrite and --skip are mutually exclusive")
+		if setForce && setSkip {
+			return UserError("--force and --skip are mutually exclusive")
 		}
 
 		key := args[0]
@@ -78,12 +78,12 @@ shell history).`,
 				return nil
 			}
 
-			if setOverwrite {
+			if setForce {
 				break
 			}
 
 			if !isTTY {
-				return UserError("key already exists; use --overwrite or --skip")
+				return UserError("key already exists; use --force or --skip")
 			}
 
 			fmt.Fprintf(os.Stderr, "\n%s already exists. New value will replace it.\n", key)

@@ -42,18 +42,3 @@ func Dotenv(key string, value string) string {
 
 // FormatFunc is the type for a format function.
 type FormatFunc func(key, value string) string
-
-// Get returns the FormatFunc for the given format name.
-// Valid names: "posix" (default), "fish", "dotenv".
-func Get(name string) (FormatFunc, error) {
-	switch name {
-	case "posix", "":
-		return Posix, nil
-	case "fish":
-		return Fish, nil
-	case "dotenv":
-		return Dotenv, nil
-	default:
-		return nil, fmt.Errorf("unknown format %q (valid: posix, fish, dotenv)", name)
-	}
-}

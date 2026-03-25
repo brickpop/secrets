@@ -190,7 +190,7 @@ test:
 Pass secrets to a container without writing anything to disk, using bash process substitution:
 
 ```sh
-docker run --env-file <(vars resolve --format dotenv) my-image
+docker run --env-file <(vars resolve --dotenv) my-image
 ```
 
 `--env-file` reads from the file descriptor provided by `<(...)` — the output of `vars resolve` never touches the filesystem.
@@ -202,7 +202,7 @@ vars import .env                    # import all keys
 vars import my-project/dev .env     # import with a scope prefix → my-project/dev/KEY
 ```
 
-Conflicts are handled interactively (skip, overwrite). Use `--skip` or `--overwrite` for non-interactive imports.
+Conflicts are handled interactively (skip, overwrite). Use `--skip` or `--force` for non-interactive imports.
 
 ### Integrating with external vaults
 
@@ -217,7 +217,7 @@ sync-from-op:
     vars set ETHERSCAN_API_KEY  "$(op read 'op://etherscan/api-key')"
 ```
 
-Run the recipe during onboarding or after a rotation. Keys already present are left untouched (`--skip`); use `--overwrite` to force an update.
+Run the recipe during onboarding or after a rotation. Keys already present are left untouched (`--skip`); use `--force` to overwrite.
 
 The same pattern works for HashiCorp Vault (`vault kv get`), AWS Secrets Manager (`aws secretsmanager get-secret-value`), or any CLI that prints a secret to stdout.
 
@@ -277,7 +277,7 @@ vars get RPC_URL~2
 
 | Flag | Description |
 |------|-------------|
-| `--overwrite` | Replace existing key without prompting |
+| `-f`, `--force` | Overwrite existing key without prompting |
 | `--skip` | Do nothing if key already exists |
 
 When a key exists with a different value and neither flag is given, `set` prompts interactively: `[o]verwrite / [r]ename / [s]kip`. Setting the same value is a no-op.
@@ -286,7 +286,7 @@ When a key exists with a different value and neither flag is given, `set` prompt
 
 | Flag | Description |
 |------|-------------|
-| `--overwrite` | Replace all conflicting keys without prompting |
+| `-f`, `--force` | Overwrite all conflicting keys without prompting |
 | `--skip` | Keep all existing keys, only import new ones |
 
 ### `resolve` flags
@@ -295,16 +295,11 @@ When a key exists with a different value and neither flag is given, `set` prompt
 |------|---------|-------------|
 | `-f`, `--file` | `.vars.yaml` | Path to manifest file |
 | `-p`, `--profile` | — | Active profile (auto-applies `default` if present) |
-| `--format` | `posix` | Output format: `posix` (default), `fish`, `dotenv` |
-| `--partial` | `false` | Export empty string for missing keys instead of erroring |
+| `--dotenv` | — | Output as `KEY=value` |
+| `--fish` | — | Output in fish shell format |
+| `--partial` | — | Export empty string for missing keys instead of erroring |
 
-### Output formats
-
-| Format | Example output | Shell usage |
-|--------|----------------|-------------|
-| `posix` | `export KEY='value'` | `eval "$(vars resolve)"` |
-| `fish` | `set -x KEY 'value'` | `vars resolve --format fish \| source` |
-| `dotenv` | `KEY="value"` | Pipe to files or other tools |
+Default output is `export KEY='value'` — pipe into `eval "$(vars resolve)"` in bash/zsh.
 
 ---
 

@@ -18,7 +18,7 @@ var (
 )
 
 func init() {
-	importCmd.Flags().BoolVar(&importOverwrite, "overwrite", false, "Overwrite conflicting keys without prompting")
+	importCmd.Flags().BoolVarP(&importOverwrite, "force", "f", false, "Overwrite conflicting keys without prompting")
 	importCmd.Flags().BoolVar(&importSkip, "skip", false, "Skip conflicting keys without prompting")
 	rootCmd.AddCommand(importCmd)
 }
@@ -33,7 +33,7 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if importOverwrite && importSkip {
-			return UserError("--overwrite and --skip are mutually exclusive")
+			return UserError("--force and --skip are mutually exclusive")
 		}
 
 		var scope, filePath string
@@ -138,7 +138,7 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 
 				// Interactive mode
 				if !isTTY {
-					return UserError("conflicting keys found; use --overwrite or --skip to resolve non-interactively")
+					return UserError("conflicting keys found; use --force or --skip to resolve non-interactively")
 				}
 
 				fmt.Fprintf(os.Stderr, "\n%s already exists\n  current:  %s\n  imported: %s\n", key, existing, value)

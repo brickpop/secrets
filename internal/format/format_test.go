@@ -182,30 +182,3 @@ func TestDotenv(t *testing.T) {
 	}
 }
 
-func TestGet_ValidFormats(t *testing.T) {
-	for _, name := range []string{"posix", "fish", "dotenv", ""} {
-		f, err := Get(name)
-		if err != nil {
-			t.Fatalf("Get(%q): %v", name, err)
-		}
-		if f == nil {
-			t.Fatalf("Get(%q) returned nil", name)
-		}
-	}
-}
-
-func TestGet_InvalidFormat(t *testing.T) {
-	_, err := Get("powershell")
-	if err == nil {
-		t.Fatal("Get(powershell) should fail")
-	}
-}
-
-func TestGet_DefaultIsPosix(t *testing.T) {
-	f, _ := Get("")
-	got := f("KEY", "value")
-	want := Posix("KEY", "value")
-	if got != want {
-		t.Fatalf("default format should be posix: got %q, want %q", got, want)
-	}
-}

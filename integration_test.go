@@ -189,7 +189,7 @@ func TestIntegration_SetOverwrite(t *testing.T) {
 	r.initNoPassphrase()
 
 	r.mustRun("set", "KEY", "first")
-	r.mustRun("set", "KEY", "second", "--overwrite")
+	r.mustRun("set", "KEY", "second", "--force")
 
 	out := r.mustRun("get", "KEY")
 	if out != "second" {
@@ -230,7 +230,7 @@ func TestIntegration_Set_NonTTYConflictFails(t *testing.T) {
 
 	r.mustRun("set", "KEY", "original")
 	_, stderr := r.mustFail("set", "KEY", "new")
-	if !strings.Contains(stderr, "--overwrite") || !strings.Contains(stderr, "--skip") {
+	if !strings.Contains(stderr, "--force") || !strings.Contains(stderr, "--skip") {
 		t.Fatalf("expected flag hint, got: %s", stderr)
 	}
 }
@@ -289,7 +289,7 @@ func TestIntegration_ResolveFish(t *testing.T) {
   - MY_VAR
 `)
 
-	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--format", "fish")
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--fish")
 	if !strings.Contains(out, "set -x MY_VAR") {
 		t.Fatalf("fish export missing set -x: %s", out)
 	}
@@ -305,7 +305,7 @@ func TestIntegration_ResolveDotenv(t *testing.T) {
   - MY_VAR
 `)
 
-	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--format", "dotenv")
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--dotenv")
 	if !strings.Contains(out, "MY_VAR=") {
 		t.Fatalf("dotenv export missing MY_VAR: %s", out)
 	}
@@ -362,10 +362,14 @@ func TestIntegration_DumpAllFormats(t *testing.T) {
 	r.mustRun("set", "KEY1", "val1")
 	r.mustRun("set", "KEY2", "val2")
 
-	for _, format := range []string{"posix", "fish", "dotenv"} {
-		out := r.mustRun("dump", "--format", format)
+	for _, flag := range []string{"", "--fish", "--dotenv"} {
+		args := []string{"dump"}
+		if flag != "" {
+			args = append(args, flag)
+		}
+		out := r.mustRun(args...)
 		if !strings.Contains(out, "KEY1") || !strings.Contains(out, "KEY2") {
-			t.Errorf("dump --%s missing keys: %s", format, out)
+			t.Errorf("dump %s missing keys: %s", flag, out)
 		}
 	}
 }
@@ -501,17 +505,13 @@ func TestIntegration_ResolveMissingManifest(t *testing.T) {
 	}
 }
 
-func TestIntegration_ResolveInvalidFormat(t *testing.T) {
+func TestIntegration_ResolveUnknownFlag(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
-	r.writeFile(".vars.yaml", `keys:
-  - KEY
-`)
-
-	_, stderr := r.mustFail("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--format", "invalid")
-	if !strings.Contains(stderr, "invalid") || !strings.Contains(strings.ToLower(stderr), "format") {
-		t.Fatalf("expected format error, got: %s", stderr)
+	_, stderr := r.mustFail("resolve", "--unknown-flag")
+	if !strings.Contains(stderr, "unknown flag") {
+		t.Fatalf("expected unknown flag error, got: %s", stderr)
 	}
 }
 
@@ -759,7 +759,7 @@ func TestIntegration_Import_OverwriteConflict(t *testing.T) {
 
 	r.mustRun("set", "RPC_URL", "original")
 	r.writeFile(".env", "RPC_URL=updated\n")
-	r.mustRun("import", filepath.Join(r.workDir, ".env"), "--overwrite")
+	r.mustRun("import", filepath.Join(r.workDir, ".env"), "--force")
 
 	if r.mustRun("get", "RPC_URL") != "updated" {
 		t.Fatal("RPC_URL should be overwritten")
@@ -772,7 +772,7 @@ func TestIntegration_Import_SameValueSkipped(t *testing.T) {
 
 	r.mustRun("set", "RPC_URL", "same_value")
 	r.writeFile(".env", "RPC_URL=same_value\n")
-	// No --skip or --overwrite needed — same value is not a conflict
+	// No --skip or --force needed — same value is not a conflict
 	r.mustRun("import", filepath.Join(r.workDir, ".env"))
 
 	if r.mustRun("get", "RPC_URL") != "same_value" {
@@ -789,8 +789,8 @@ func TestIntegration_Import_NonTTYConflictFails(t *testing.T) {
 
 	// Non-TTY with conflict and no flag should fail
 	_, stderr := r.mustFail("import", filepath.Join(r.workDir, ".env"))
-	if !strings.Contains(stderr, "--overwrite") || !strings.Contains(stderr, "--skip") {
-		t.Fatalf("expected hint about --overwrite/--skip, got: %s", stderr)
+	if !strings.Contains(stderr, "--force") || !strings.Contains(stderr, "--skip") {
+		t.Fatalf("expected hint about --force/--skip, got: %s", stderr)
 	}
 }
 
@@ -960,8 +960,8 @@ func TestIntegration_History_RecordedOnOverwrite(t *testing.T) {
 	r.initNoPassphrase()
 
 	r.mustRun("set", "RPC_URL", "https://v1.example.com")
-	r.mustRun("set", "--overwrite", "RPC_URL", "https://v2.example.com")
-	r.mustRun("set", "--overwrite", "RPC_URL", "https://v3.example.com")
+	r.mustRun("set", "--force", "RPC_URL", "https://v2.example.com")
+	r.mustRun("set", "--force", "RPC_URL", "https://v3.example.com")
 
 	out := r.mustRun("history", "RPC_URL")
 	lines := strings.Split(strings.TrimSpace(out), "\n")
@@ -988,7 +988,7 @@ func TestIntegration_History_NotInLs(t *testing.T) {
 	r.initNoPassphrase()
 
 	r.mustRun("set", "KEY", "v1")
-	r.mustRun("set", "--overwrite", "KEY", "v2")
+	r.mustRun("set", "--force", "KEY", "v2")
 
 	out := r.mustRun("ls", "--all")
 	if strings.Contains(out, "~") {
@@ -1001,7 +1001,7 @@ func TestIntegration_History_DeleteCascades(t *testing.T) {
 	r.initNoPassphrase()
 
 	r.mustRun("set", "KEY", "v1")
-	r.mustRun("set", "--overwrite", "KEY", "v2")
+	r.mustRun("set", "--force", "KEY", "v2")
 	r.mustRun("rm", "--force", "KEY")
 
 	// History should be empty
@@ -1016,7 +1016,7 @@ func TestIntegration_History_MvCarriesHistory(t *testing.T) {
 	r.initNoPassphrase()
 
 	r.mustRun("set", "OLD_KEY", "v1")
-	r.mustRun("set", "--overwrite", "OLD_KEY", "v2")
+	r.mustRun("set", "--force", "OLD_KEY", "v2")
 	r.mustRun("mv", "OLD_KEY", "NEW_KEY")
 
 	// History under new name
