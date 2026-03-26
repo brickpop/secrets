@@ -4,7 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.1.0] - Unreleased
+## [0.2.0]
+
+### Added
+- `vars resolve` merges stdin dotenv as a fallback source — store values take priority for manifest keys; dotenv acts as fallback for keys not yet in the store; non-manifest keys pass through unchanged
+- Agent is now the exclusive write gateway — all writes (`set`, `rm`, `mv`, `import`, `passwd`) go through the agent and are persisted to disk immediately
+
+### Changed
+- Project renamed from `secrets` to `vars` (binary name, env vars `VARS_STORE_DIR` / `VARS_AGENT_SOCK`, store path `~/.local/share/vars/`, manifest files `.vars.yaml` / `.vars.local.yaml`)
+- `vars init` removed — the first command that needs the store creates it transparently with a passphrase prompt
+- `--overwrite` flag renamed to `--force` on `set` and `import`, consistent with `rm`
+- `vars passwd` now prompts for the current passphrase first, then the new passphrase (previously prompted new passphrase first)
+- `vars history <key>` now errors if the key does not exist, instead of printing nothing
+- Error messages standardised: lowercase, no trailing period
+- Batch Set and Delete RPCs — `import` and multi-key `rm` run a single scrypt encryption call regardless of how many keys are affected, significantly reducing write latency
+
+---
+
+## [0.1.0]
 
 ### Added
 - Encrypted secret store using age/scrypt (`vars init`, `vars set`, `vars get`, `vars ls`, `vars rm`)

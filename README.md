@@ -4,13 +4,11 @@ One encrypted store for all your environment variables, shared across any number
 
 ---
 
-If you work across many repositories — each with its own `.env` file full of private keys, RPC URLs, and API tokens — you've felt the pain: secrets duplicated everywhere, rotations that miss half the repos, files that accidentally get committed or read by an agent.
+If you work across multiple projects, the problems are familiar: secrets duplicated across `.env` files, rotations that miss half the repos, one accidental commit away from a leak — and now AI coding assistants that can read everything in your working directory.
 
-`vars` keeps all your secrets in one age-encrypted store and exports them as environment variables on demand, making `.env` files entirely optional. It is **opt-in and non-breaking**: collaborators that don't use it keep operating as before. Projects that do, commit a `.vars.yaml` listing the variable names they need and developers can resolve them from their own personal store.
+`vars` keeps everything in a single encrypted personal store and resolves secrets as environment variables on demand. No server, no account, no cloud. **Opt-in and non-breaking** — teammates who don't use it are unaffected.
 
-It is **local-first and offline friendly** — no server, no cloud dependency, no account. It scales from a solo developer to a team using optional scopes and profiles. The store is a single encrypted file that you can back up, sync, or leave alone.
-
-`vars` loads env vars on your session. What you do with them is up to you.
+`vars` loads env vars into your session. What you do with them is up to you.
 
 ---
 
@@ -35,19 +33,21 @@ The first command automatically sets up an encrypted store and walks you through
 Store values:
 
 ```sh
-vars set PRIVATE_KEY              # prompts for the value (keeps it out of shell history)
+vars set DB_PASSWORD              # prompts for the value (keeps it out of shell history)
+vars set API_TOKEN "abc123"
 vars set RPC_URL "https://rpc.example.com"
-vars set ETHERSCAN_API_KEY "abc123"
 ```
 
 Read them back:
 
 ```sh
 vars get RPC_URL                  # prints the value
-vars ls                           # lists all keys (global scope)
+vars ls                           # lists all keys
 ```
 
 One place for all your keys, encrypted at rest, accessible from any terminal.
+
+The first time you run a command you'll be asked for your passphrase. After that, the store stays unlocked in the background for 8 hours — no re-entering it between commands or across terminal sessions.
 
 ---
 
@@ -58,21 +58,23 @@ Add `.vars.yaml` to your project declaring the env var names it needs. Commit it
 ```yaml
 # .vars.yaml
 keys:
-  - RPC_URL
+  - DB_URL
+  - API_TOKEN
   - PRIVATE_KEY
-  - ETHERSCAN_API_KEY
 ```
 
 Then resolve them into your shell, on demand:
 
 ```sh
 eval "$(vars resolve)"          # bash/zsh
-echo $ETHERSCAN_API_KEY            # Loaded as env vars
+echo $API_TOKEN                 # loaded as env vars
 ```
 
-`resolve` reads the manifest, looks up each key in your store, and prints shell-ready `export` statements. Nothing is written to disk.
+`resolve` reads the project manifest, looks up each key in your store, and prints shell-ready `export` statements. Nothing is written to disk.
 
 Each developer uses their own store. The committed manifest is the shared contract; the secrets are personal.
+
+That's the core workflow. Everything from here is optional — adopt it as your needs grow.
 
 ---
 
@@ -83,7 +85,7 @@ As your store grows, you may have multiple variants of the same key — a `prod`
 ```sh
 vars set prod/PRIVATE_KEY "0xPRODKEY"
 vars set hoodi/PRIVATE_KEY "0xTESTKEY"
-vars set arbitrum/dev/PRIVATE_KEY "0xARBKEY"   # nested scope
+vars set hoodi/dev/PRIVATE_KEY "0xTESTKEY2"    # nested scope
 vars set ETHERSCAN_API_KEY "abc123"            # shared, no scope needed
 ```
 
