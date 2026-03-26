@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/vars-cli/vars/internal/store"
 )
 
 func init() {
@@ -23,6 +25,20 @@ shared across multiple projects. It replaces scattered .env files with
 a single age-encrypted store.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// First-time setup: no store yet — run the wizard.
+		if !store.Exists() {
+			if err := ensureAgent(); err != nil {
+				return err
+			}
+			fmt.Fprintln(os.Stderr, "\nYou're all set. Try:")
+			fmt.Fprintln(os.Stderr, "  vars set MY_KEY     # store a value")
+			fmt.Fprintln(os.Stderr, "  vars get MY_KEY     # retrieve it")
+			fmt.Fprintln(os.Stderr, "  vars --help         # see all commands")
+			return nil
+		}
+		return cmd.Help()
+	},
 }
 
 // Execute runs the root command. Called from main.

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.0] UNRELEASED
+
+- `vars` with no arguments triggers a first-run setup wizard when no store exists: explains store location, prompts for passphrase, creates the store, starts the agent, and prints next steps
+- Optional config file at `~/.config/vars/config.yaml` (`$XDG_CONFIG_HOME/vars/config.yaml`) — supports `agent_ttl` to set the default agent lifetime (e.g. `4h`, `1d`, `0` for unlimited)
+
 ## [0.2.0]
 
 ### Added

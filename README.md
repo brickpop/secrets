@@ -330,6 +330,12 @@ vars agent --ttl 0     # never expire
 vars agent stop        # wipe memory and exit immediately
 ```
 
+To set a persistent default, create `~/.config/vars/config.yaml`:
+
+```yaml
+agent_ttl: 4h   # e.g. 30m, 4h, 12h, 1d, 0 for unlimited
+```
+
 The agent communicates over a Unix domain socket. It never writes decrypted data to disk.
 
 ---

@@ -201,7 +201,7 @@ func runDaemon(sockPath string) error {
 
 	ttl, err := parseTTLSeconds(agentTTL)
 	if err != nil {
-		ttl = defaultAgentTTL
+		ttl = defaultTTL()
 	}
 
 	srv := agent.NewServer(data, sockPath, passphrase, backend, agebackend.NewBackend, store.Dir())

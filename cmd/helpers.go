@@ -11,7 +11,6 @@ import (
 	"github.com/vars-cli/vars/internal/store"
 )
 
-const defaultAgentTTL int64 = 8 * 60 * 60 // 8 hours in seconds
 
 // stdinPrompt is a lazily-initialized Prompter backed by os.Stdin.
 // All code must use this instead of prompt.New(os.Stdin, ...) to avoid
@@ -31,7 +30,7 @@ func ensureAgent() error {
 	if agent.IsRunning(agentSocketPath()) {
 		return nil
 	}
-	_, err := startAgent(defaultAgentTTL)
+	_, err := startAgent(defaultTTL())
 	return err
 }
 
