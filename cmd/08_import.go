@@ -13,12 +13,12 @@ import (
 )
 
 var (
-	importOverwrite bool
-	importSkip      bool
+	importForce bool
+	importSkip  bool
 )
 
 func init() {
-	importCmd.Flags().BoolVarP(&importOverwrite, "force", "f", false, "Overwrite conflicting keys without prompting")
+	importCmd.Flags().BoolVarP(&importForce, "force", "f", false, "Overwrite conflicting keys without confirmation")
 	importCmd.Flags().BoolVar(&importSkip, "skip", false, "Skip conflicting keys without prompting")
 	rootCmd.AddCommand(importCmd)
 }
@@ -32,7 +32,7 @@ Without a scope, keys are imported into the default scope.
 With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if importOverwrite && importSkip {
+		if importForce && importSkip {
 			return UserError("--force and --skip are mutually exclusive")
 		}
 
@@ -86,7 +86,7 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 				return err
 			}
 			if !passphraseObtained {
-				p, promptErr := stdinPrompter().Passphrase("Passphrase: ")
+				p, promptErr := stdinPrompter().Passphrase("Enter passphrase to confirm overwrite: ")
 				if promptErr != nil {
 					return promptErr
 				}
@@ -123,12 +123,12 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 
 				// Conflict: key exists with a different value
 				if importSkip {
-					fmt.Fprintf(os.Stderr, "Skipped %s (already exists)\n", key)
+					fmt.Fprintf(os.Stderr, "Skipped %s\n", key)
 					skipped++
 					continue entryLoop
 				}
 
-				if importOverwrite {
+				if importForce {
 					if err := doSet(key, value); err != nil {
 						return InternalError(fmt.Sprintf("overwriting %s: %v", key, err))
 					}
@@ -141,7 +141,7 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 					return UserError("conflicting keys found; use --force or --skip to resolve non-interactively")
 				}
 
-				fmt.Fprintf(os.Stderr, "\n%s already exists\n  current:  %s\n  imported: %s\n", key, existing, value)
+				fmt.Fprintf(os.Stderr, "\n%s already exists.\n  current:  %s\n  imported: %s\n", key, existing, value)
 				choice, err := stdinPrompter().Line("[o]verwrite  [r]ename  [s]kip > ")
 				if err != nil {
 					return UserError(err.Error())
@@ -177,7 +177,7 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "Imported: %d  Overwritten: %d  Skipped: %d\n", imported, overwritten, skipped)
+		fmt.Fprintf(os.Stderr, "Imported %d, overwritten %d, skipped %d.\n", imported, overwritten, skipped)
 		return nil
 	},
 }

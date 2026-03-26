@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -21,13 +22,19 @@ var historyCmd = &cobra.Command{
 			return err
 		}
 
-		keys, values, err := agent.History(agentSocketPath(), args[0])
+		sockPath := agentSocketPath()
+
+		if _, err := agent.Get(sockPath, args[0]); err != nil {
+			return UserError(fmt.Sprintf("key %q not found in store", args[0]))
+		}
+
+		keys, values, err := agent.History(sockPath, args[0])
 		if err != nil {
 			return InternalError(err.Error())
 		}
 
 		for i, k := range keys {
-			fmt.Printf("%s:\t%s\n", k, values[i])
+			fmt.Fprintf(os.Stdout, "%s:\t%s\n", k, values[i])
 		}
 		return nil
 	},

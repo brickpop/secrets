@@ -166,6 +166,19 @@ Local overrides take priority over `.vars.yaml`, per key. Everyone has the same 
 
 ---
 
+## Mixing with a .env file
+
+You can pipe an existing `.env` into `vars resolve`. Store values take priority for manifest keys; the dotenv acts as a fallback for keys not yet in the store; anything not declared in the manifest passes through unchanged.
+
+```sh
+cat .env | vars resolve             # error if a manifest key is missing from both sources
+cat .env | vars resolve --partial   # skip keys missing from both, pass the rest through
+```
+
+This makes migration gradual: keep your `.env` in place and move keys into the store one by one. As soon as a key is in the store, `vars` uses the store value automatically — no changes to your workflow.
+
+---
+
 ## More use cases
 
 ### Scripts and task runners
@@ -297,9 +310,9 @@ When a key exists with a different value and neither flag is given, `set` prompt
 | `-p`, `--profile` | — | Active profile (auto-applies `default` if present) |
 | `--dotenv` | — | Output as `KEY=value` |
 | `--fish` | — | Output in fish shell format |
-| `--partial` | — | Export empty string for missing keys instead of erroring |
+| `--partial` | — | Skip missing keys instead of erroring |
 
-Default output is `export KEY='value'` — pipe into `eval "$(vars resolve)"` in bash/zsh.
+Default output is `export KEY='value'`, which you can pipe into `eval "$(vars resolve)"` in bash/zsh.
 
 ---
 

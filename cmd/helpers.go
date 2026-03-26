@@ -38,7 +38,7 @@ func ensureAgent() error {
 // withPassphrase runs fn with the trial-passphrase approach.
 // First tries empty passphrase. If agent returns "passphrase required",
 // prompts the user and retries once.
-func withPassphrase(fn func(passphrase string) error) error {
+func withPassphrase(prompt string, fn func(passphrase string) error) error {
 	err := fn("")
 	if err == nil {
 		return nil
@@ -49,7 +49,7 @@ func withPassphrase(fn func(passphrase string) error) error {
 	}
 
 	// Passphrase required — prompt and retry
-	pass, promptErr := stdinPrompter().Passphrase("Passphrase: ")
+	pass, promptErr := stdinPrompter().Passphrase(prompt)
 	if promptErr != nil {
 		return UserError(promptErr.Error())
 	}

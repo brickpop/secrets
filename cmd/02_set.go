@@ -17,14 +17,14 @@ var (
 )
 
 func init() {
-	setCmd.Flags().BoolVarP(&setForce, "force", "f", false, "Overwrite existing key without prompting")
+	setCmd.Flags().BoolVarP(&setForce, "force", "f", false, "Overwrite existing key without confirmation")
 	setCmd.Flags().BoolVar(&setSkip, "skip", false, "Skip if key already exists")
 	rootCmd.AddCommand(setCmd)
 }
 
 var setCmd = &cobra.Command{
 	Use:   "set <key> [value]",
-	Short: "Set a secret in the store",
+	Short: "Add or update a key in the store",
 	Long: `Write a key-value pair to the store. If value is omitted, prompts
 interactively with echo disabled (preferred — inline values appear in
 shell history).`,
@@ -58,6 +58,9 @@ shell history).`,
 		sockPath := agentSocketPath()
 		isTTY := term.IsTerminal(int(os.Stdin.Fd()))
 
+		// Track whether this ends up being an overwrite (existing key with different value)
+		isOverwrite := false
+
 		// Conflict resolution loop (handles rename re-checks)
 		for {
 			existing, getErr := agent.Get(sockPath, key)
@@ -77,6 +80,8 @@ shell history).`,
 				fmt.Fprintln(os.Stderr, "Skipped.")
 				return nil
 			}
+
+			isOverwrite = true
 
 			if setForce {
 				break
@@ -106,7 +111,8 @@ shell history).`,
 					return nil
 				}
 				key = key + "_" + sfx
-				continue // re-check renamed key
+				isOverwrite = false // renamed key may be new — re-check
+				continue
 			default: // "s" or unrecognised
 				fmt.Fprintln(os.Stderr, "Skipped.")
 				return nil
@@ -114,10 +120,16 @@ shell history).`,
 			break
 		}
 
-		if err := withPassphrase(func(passphrase string) error {
-			return agent.Set(sockPath, key, value, passphrase)
-		}); err != nil {
-			return UserError(err.Error())
+		var setErr error
+		if isOverwrite {
+			setErr = withPassphrase("Enter passphrase to confirm overwrite: ", func(passphrase string) error {
+				return agent.Set(sockPath, key, value, passphrase)
+			})
+		} else {
+			setErr = agent.Set(sockPath, key, value, "")
+		}
+		if setErr != nil {
+			return UserError(setErr.Error())
 		}
 
 		printManifestHint(key)

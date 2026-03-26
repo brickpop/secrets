@@ -23,7 +23,7 @@ var mvCmd = &cobra.Command{
 		}
 		sockPath := agentSocketPath()
 
-		if err := withPassphrase(func(pass string) error {
+		if err := withPassphrase("Passphrase: ", func(pass string) error {
 			return agent.Rename(sockPath, args[0], args[1], pass)
 		}); err != nil {
 			return UserError(err.Error())

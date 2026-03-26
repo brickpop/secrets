@@ -18,7 +18,7 @@ var rmForce bool
 
 var rmCmd = &cobra.Command{
 	Use:   "rm <key> [key...]",
-	Short: "Remove one or more entries from the store",
+	Short: "Remove one or more keys from the store",
 	Long:  `Delete keys from the store. Prompts for confirmation unless --force is used.`,
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -31,27 +31,32 @@ var rmCmd = &cobra.Command{
 		// Verify all keys exist before prompting
 		for _, key := range args {
 			if _, err := agent.Get(sockPath, key); err != nil {
-				return UserError(fmt.Sprintf("Key %q not found in store.", key))
+				return UserError(fmt.Sprintf("key %q not found in store", key))
 			}
 		}
 
 		if !rmForce {
-			var prompt string
 			if len(args) == 1 {
-				prompt = fmt.Sprintf("Remove %s? [y/N] ", args[0])
+				histKeys, _, _ := agent.History(sockPath, args[0])
+				if len(histKeys) == 0 {
+					fmt.Fprintf(os.Stderr, "Removing %s.\n", args[0])
+				} else {
+					fmt.Fprintf(os.Stderr, "Removing %s and its %s.\n", args[0], backupCount(len(histKeys)))
+				}
 			} else {
-				prompt = fmt.Sprintf("Remove %d keys (%s)? [y/N] ", len(args), joinKeys(args))
-			}
-			ok, err := stdinPrompter().Confirm(prompt)
-			if err != nil {
-				return UserError(err.Error())
-			}
-			if !ok {
-				return nil
+				fmt.Fprintf(os.Stderr, "Removing %d keys:\n", len(args))
+				for _, key := range args {
+					histKeys, _, _ := agent.History(sockPath, key)
+					if len(histKeys) == 0 {
+						fmt.Fprintf(os.Stderr, "  %s\n", key)
+					} else {
+						fmt.Fprintf(os.Stderr, "  %s (+ %s)\n", key, backupCount(len(histKeys)))
+					}
+				}
 			}
 		}
 
-		err := withPassphrase(func(passphrase string) error {
+		err := withPassphrase("Enter passphrase to confirm: ", func(passphrase string) error {
 			for _, key := range args {
 				if err := agent.Delete(sockPath, key, passphrase); err != nil {
 					return err
@@ -72,13 +77,9 @@ var rmCmd = &cobra.Command{
 	},
 }
 
-func joinKeys(keys []string) string {
-	if len(keys) <= 3 {
-		result := keys[0]
-		for _, k := range keys[1:] {
-			result += ", " + k
-		}
-		return result
+func backupCount(n int) string {
+	if n == 1 {
+		return "1 backup"
 	}
-	return fmt.Sprintf("%s, %s, ... +%d more", keys[0], keys[1], len(keys)-2)
+	return fmt.Sprintf("%d backups", n)
 }

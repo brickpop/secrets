@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -15,12 +16,6 @@ import (
 	agebackend "github.com/vars-cli/vars/internal/crypto/age"
 	"github.com/vars-cli/vars/internal/store"
 )
-
-// daemonPayload is the JSON structure written to the temp file for the daemon.
-type daemonPayload struct {
-	Passphrase string            `json:"passphrase"`
-	Data       map[string]string `json:"data"`
-}
 
 var agentTTL string
 
@@ -42,17 +37,17 @@ to set an explicit TTL, or to update the TTL of a running agent.`,
 
 		if agent.IsRunning(sockPath) {
 			if !cmd.Flags().Changed("ttl") {
-				fmt.Fprintln(os.Stderr, "Agent already running.")
+				fmt.Fprintln(os.Stderr, "vars: agent already running")
 				return nil
 			}
 			ttl, err := parseTTLSeconds(agentTTL)
 			if err != nil {
-				return UserError(fmt.Sprintf("Invalid TTL: %v", err))
+				return UserError(fmt.Sprintf("invalid TTL: %v", err))
 			}
 			if err := agent.SetAgentTTL(sockPath, ttl); err != nil {
 				return InternalError(fmt.Sprintf("updating agent TTL: %v", err))
 			}
-			fmt.Fprintln(os.Stderr, "Agent TTL updated.")
+			fmt.Fprintln(os.Stderr, "vars: agent TTL updated")
 			return nil
 		}
 
@@ -63,14 +58,14 @@ to set an explicit TTL, or to update the TTL of a running agent.`,
 
 		ttl, err := parseTTLSeconds(agentTTL)
 		if err != nil {
-			return UserError(fmt.Sprintf("Invalid TTL: %v", err))
+			return UserError(fmt.Sprintf("invalid TTL: %v", err))
 		}
 
 		if _, err := startAgent(ttl); err != nil {
 			return err
 		}
 
-		fmt.Fprintln(os.Stderr, "Agent started.")
+		fmt.Fprintln(os.Stderr, "vars: agent started")
 		return nil
 	},
 }
@@ -82,7 +77,7 @@ var agentStopCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sockPath := agentSocketPath()
 		if !agent.IsRunning(sockPath) {
-			fmt.Fprintln(os.Stderr, "No agent running.")
+			fmt.Fprintln(os.Stderr, "vars: no agent running")
 			return nil
 		}
 
@@ -90,20 +85,22 @@ var agentStopCmd = &cobra.Command{
 			return InternalError(fmt.Sprintf("stopping agent: %v", err))
 		}
 
-		fmt.Fprintln(os.Stderr, "Agent stopped.")
+		fmt.Fprintln(os.Stderr, "vars: agent stopped")
 		return nil
 	},
 }
 
-// startAgent decrypts the store, spawns the daemon, and waits for the socket.
-// Returns the socket path. Used by both `vars agent` and ensureAgent().
+// startAgent validates the passphrase (if any), then spawns the daemon.
+// The daemon receives only the passphrase via stdin and decrypts the store independently —
+// decrypted data never crosses the process boundary.
+// Used by both `vars agent` and ensureAgent().
 func startAgent(ttl int64) (string, error) {
 	if !store.Exists() {
 		passphrase, err := createStore()
 		if err != nil {
 			return "", err
 		}
-		return launchDaemon(map[string]string{}, passphrase, ttl)
+		return launchDaemon(passphrase, ttl)
 	}
 
 	ciphertext, err := os.ReadFile(store.FilePath())
@@ -113,88 +110,48 @@ func startAgent(ttl int64) (string, error) {
 
 	// Print permission warnings
 	for _, w := range store.CheckPermissions() {
-		fmt.Fprintln(os.Stderr, w)
+		fmt.Fprintf(os.Stderr, "vars: %s\n", w)
 	}
 
-	// Decrypt: trial empty passphrase, then prompt
-	var plaintext []byte
+	// Validate passphrase: trial empty first, then prompt.
+	// Plaintext is zeroed immediately — the daemon decrypts the store independently.
 	var passphrase string
-
-	if pt, ok := agebackend.TrialDecryptEmpty(ciphertext); ok {
-		plaintext = pt
-		passphrase = ""
-	} else {
+	if _, ok := agebackend.TrialDecryptEmpty(ciphertext); !ok {
 		pass, err := stdinPrompter().Passphrase("Passphrase: ")
 		if err != nil {
 			return "", UserError(err.Error())
 		}
-		backend := agebackend.New(pass)
-		pt, err := backend.Decrypt(ciphertext)
+		plaintext, err := agebackend.New(pass).Decrypt(ciphertext)
 		if err != nil {
-			return "", UserError("Incorrect passphrase.")
+			return "", UserError("incorrect passphrase")
 		}
-		plaintext = pt
+		for i := range plaintext {
+			plaintext[i] = 0
+		}
 		passphrase = pass
 	}
 
-	// Verify valid JSON
-	var data map[string]string
-	if err := json.Unmarshal(plaintext, &data); err != nil {
-		return "", InternalError("corrupt store data")
-	}
-	// Zero plaintext before handing off
-	for i := range plaintext {
-		plaintext[i] = 0
-	}
-
-	return launchDaemon(data, passphrase, ttl)
+	return launchDaemon(passphrase, ttl)
 }
 
-// launchDaemon spawns the agent daemon with already-decrypted data.
-// Used by startAgent (after decrypting from disk) and init (data already in memory).
-func launchDaemon(data map[string]string, passphrase string, ttl int64) (string, error) {
+// launchDaemon re-execs the binary as a background daemon, passing only the passphrase
+// via stdin. The daemon reads the store file from disk and decrypts it independently.
+func launchDaemon(passphrase string, ttl int64) (string, error) {
 	sockPath := agentSocketPath()
 
-	// Build daemon payload with passphrase
-	payload := daemonPayload{Passphrase: passphrase, Data: data}
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return "", InternalError("serializing daemon payload")
-	}
-
-	// Write payload to temp file
-	tmpFile, err := os.CreateTemp("", ".vars-agent-*")
-	if err != nil {
-		return "", InternalError("creating temp file for daemon")
-	}
-	tmpFile.Chmod(0600)
-	tmpFile.Write(payloadBytes)
-	tmpFile.Close()
-
-	// Zero payload bytes
-	for i := range payloadBytes {
-		payloadBytes[i] = 0
-	}
-
-	// Re-exec as daemon
 	self, err := os.Executable()
 	if err != nil {
-		os.Remove(tmpFile.Name())
 		return "", InternalError(fmt.Sprintf("finding executable: %v", err))
 	}
 
-	ttlStr := strconv.FormatInt(ttl, 10)
-
-	daemonCmd := exec.Command(self, "agent", "--ttl", ttlStr)
-	daemonCmd.Env = append(os.Environ(),
-		"_VARS_AGENT_DAEMON=1",
-		"_VARS_AGENT_DATA="+tmpFile.Name(),
-	)
+	// Re-exec as daemon
+	daemonCmd := exec.Command(self, "agent", "--ttl", strconv.FormatInt(ttl, 10))
+	daemonCmd.Env = append(os.Environ(), "_VARS_AGENT_DAEMON=1")
+	daemonCmd.Stdin = strings.NewReader(passphrase)
 	daemonCmd.Stdout = nil
 	daemonCmd.Stderr = nil
 
 	if err := daemonCmd.Start(); err != nil {
-		os.Remove(tmpFile.Name())
 		return "", InternalError(fmt.Sprintf("starting daemon: %v", err))
 	}
 
@@ -211,26 +168,35 @@ func launchDaemon(data map[string]string, passphrase string, ttl int64) (string,
 }
 
 // runDaemon is called by the re-exec'd child process.
+// Reads the passphrase from stdin, decrypts the store itself, and serves.
 func runDaemon(sockPath string) error {
-	dataFile := os.Getenv("_VARS_AGENT_DATA")
-	if dataFile == "" {
-		return InternalError("daemon: missing data file")
-	}
-
-	rawPayload, err := os.ReadFile(dataFile)
+	passphraseBytes, err := io.ReadAll(os.Stdin)
 	if err != nil {
-		return InternalError("daemon: reading data file")
+		return InternalError("daemon: reading passphrase")
 	}
-	os.Remove(dataFile)
-
-	var payload daemonPayload
-	if err := json.Unmarshal(rawPayload, &payload); err != nil {
-		return InternalError("daemon: corrupt payload")
+	passphrase := string(passphraseBytes)
+	for i := range passphraseBytes {
+		passphraseBytes[i] = 0
 	}
 
-	// Zero raw payload
-	for i := range rawPayload {
-		rawPayload[i] = 0
+	ciphertext, err := os.ReadFile(store.FilePath())
+	if err != nil {
+		return InternalError(fmt.Sprintf("daemon: reading store: %v", err))
+	}
+
+	backend := agebackend.New(passphrase)
+	plaintext, err := backend.Decrypt(ciphertext)
+	if err != nil {
+		return InternalError("daemon: decrypting store")
+	}
+
+	var data map[string]string
+	if err := json.Unmarshal(plaintext, &data); err != nil {
+		return InternalError("daemon: corrupt store data")
+	}
+	// Zero plaintext after parse
+	for i := range plaintext {
+		plaintext[i] = 0
 	}
 
 	ttl, err := parseTTLSeconds(agentTTL)
@@ -238,8 +204,7 @@ func runDaemon(sockPath string) error {
 		ttl = defaultAgentTTL
 	}
 
-	backend := agebackend.New(payload.Passphrase)
-	srv := agent.NewServer(payload.Data, sockPath, payload.Passphrase, backend, agebackend.NewBackend, store.Dir())
+	srv := agent.NewServer(data, sockPath, passphrase, backend, agebackend.NewBackend, store.Dir())
 	return srv.Start(time.Duration(ttl) * time.Second)
 }
 

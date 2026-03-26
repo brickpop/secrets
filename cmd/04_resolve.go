@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vars-cli/vars/internal/agent"
+	"github.com/vars-cli/vars/internal/envfile"
 	"github.com/vars-cli/vars/internal/format"
 	"github.com/vars-cli/vars/internal/manifest"
 )
@@ -25,7 +26,7 @@ func init() {
 	resolveCmd.Flags().BoolVar(&resolveDotenv, "dotenv", false, "Output as KEY=value")
 	resolveCmd.Flags().BoolVar(&resolveFish, "fish", false, "Output in fish shell format")
 	resolveCmd.Flags().StringVarP(&resolveFile, "file", "f", ".vars.yaml", "Path to the manifest file")
-	resolveCmd.Flags().BoolVar(&resolvePartial, "partial", false, "Export empty values for missing keys instead of erroring")
+	resolveCmd.Flags().BoolVar(&resolvePartial, "partial", false, "Skip missing keys instead of erroring")
 	resolveCmd.Flags().StringVarP(&resolveProfile, "profile", "p", "", "Active profile name")
 	rootCmd.AddCommand(resolveCmd)
 }
@@ -38,6 +39,11 @@ shell-source-able lines to stdout.
 
   eval "$(vars resolve)"
   vars resolve --profile mainnet
+  cat .env | vars resolve --partial
+
+When stdin is a dotenv file, it is used as a fallback for missing store keys.
+Non-manifest keys from stdin are passed through unchanged.
+Store values always take priority over stdin values.
 
 Resolution priority (per key):
   1. Active profile from .vars.local.yaml (personal override)
@@ -66,26 +72,57 @@ Resolution priority (per key):
 
 		sockPath := agentSocketPath()
 
+		// Parse stdin dotenv if piped
+		var stdinEntries []envfile.Entry
+		var stdinMap map[string]string
+		if fi, err := os.Stdin.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 {
+			stdinEntries, err = envfile.Parse(os.Stdin)
+			if err != nil {
+				return UserError("failed to parse stdin as dotenv: " + err.Error())
+			}
+			stdinMap = make(map[string]string, len(stdinEntries))
+			for _, e := range stdinEntries {
+				stdinMap[e.Key] = e.Value
+			}
+		}
+
+		// Build set of manifest env names to exclude them from pass-through
+		manifestKeys := make(map[string]bool, len(vars))
+		for _, v := range vars {
+			manifestKeys[v.EnvName] = true
+		}
+
 		type entry struct {
 			envName string
 			value   string
 		}
 		var entries []entry
 
+		// Resolve manifest keys: store first, stdin dotenv as fallback
 		for _, v := range vars {
 			val, lookupErr := resolveStoreKey(sockPath, v.StoreKey)
 			if lookupErr != nil {
+				if dotval, ok := stdinMap[v.EnvName]; ok {
+					entries = append(entries, entry{v.EnvName, dotval})
+					continue
+				}
 				if resolvePartial {
-					fmt.Fprintf(os.Stderr, "Warning: %q not found in store, exporting as empty.\n", v.StoreKey)
-					entries = append(entries, entry{v.EnvName, ""})
+					fmt.Fprintf(os.Stderr, "vars: %q not found (skipping)\n", v.StoreKey)
 					continue
 				}
 				if v.StoreKey == v.EnvName {
-					return UserError(fmt.Sprintf("Cannot resolve: key %q (required by .vars.yaml) is not in the store.", v.EnvName))
+					return UserError(fmt.Sprintf("key %q not found in store", v.EnvName))
 				}
-				return UserError(fmt.Sprintf("Cannot resolve: key %q (mapped from %q) is not in the store.", v.StoreKey, v.EnvName))
+				return UserError(fmt.Sprintf("key %q not found in store (mapped from %q)", v.StoreKey, v.EnvName))
 			}
 			entries = append(entries, entry{v.EnvName, val})
+		}
+
+		// Pass through stdin dotenv keys not declared in the manifest
+		for _, e := range stdinEntries {
+			if !manifestKeys[e.Key] {
+				entries = append(entries, entry{e.Key, e.Value})
+			}
 		}
 
 		for _, e := range entries {

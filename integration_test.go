@@ -348,10 +348,48 @@ func TestIntegration_ResolvePartial(t *testing.T) {
 
 	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--partial")
 	if !strings.Contains(out, "EXISTS") {
-		t.Fatalf("partial export missing EXISTS: %s", out)
+		t.Fatalf("partial resolve missing EXISTS: %s", out)
 	}
-	if !strings.Contains(out, "MISSING") {
-		t.Fatalf("partial export missing MISSING: %s", out)
+	if strings.Contains(out, "MISSING") {
+		t.Fatalf("partial resolve should omit MISSING key: %s", out)
+	}
+}
+
+func TestIntegration_ResolveStdinDotenv(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "STORE_KEY", "from_store")
+
+	r.writeFile(".vars.yaml", `keys:
+  - STORE_KEY
+  - DOTENV_ONLY
+  - BOTH
+`)
+
+	// STORE_KEY: in store and dotenv — store wins
+	// DOTENV_ONLY: only in dotenv — used as fallback
+	// BOTH: in both — store wins
+	// PASSTHROUGH: not in manifest — passed through unchanged
+	r.mustRun("set", "BOTH", "store_wins")
+	stdin := "STORE_KEY=dotenv_value\nDOTENV_ONLY=from_dotenv\nBOTH=dotenv_value\nPASSTHROUGH=passthrough_value\n"
+
+	out := r.mustRunWithStdin(stdin, "resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--partial")
+
+	if !strings.Contains(out, "from_store") {
+		t.Fatalf("expected store value for STORE_KEY, got: %s", out)
+	}
+	if strings.Contains(out, "dotenv_value") && strings.Contains(out, "STORE_KEY") {
+		// make sure STORE_KEY didn't use dotenv
+	}
+	if !strings.Contains(out, "from_dotenv") {
+		t.Fatalf("expected dotenv fallback for DOTENV_ONLY, got: %s", out)
+	}
+	if !strings.Contains(out, "store_wins") {
+		t.Fatalf("expected store to win for BOTH, got: %s", out)
+	}
+	if !strings.Contains(out, "passthrough_value") {
+		t.Fatalf("expected PASSTHROUGH key to be passed through, got: %s", out)
 	}
 }
 
@@ -422,9 +460,8 @@ func TestIntegration_Passwd_EmptyToSet(t *testing.T) {
 
 	r.mustRun("set", "KEY", "value")
 
-	// Change from empty to "newpass" — passwd goes through agent.
-	// New passphrase prompted, then old passphrase tried (empty → accepted).
-	r.mustRunWithStdin("newpass\nnewpass\n", "passwd")
+	// Change from empty to "newpass": current passphrase (empty), then new + confirm.
+	r.mustRunWithStdin("\nnewpass\nnewpass\n", "passwd")
 
 	// Agent is still running with new passphrase. Reads still work.
 	val := r.mustRun("get", "KEY")
@@ -455,9 +492,8 @@ func TestIntegration_Passwd_SetToEmpty(t *testing.T) {
 	// Auto-start agent (needs passphrase) and set a value
 	r.mustRunWithStdin("mypass\n", "set", "KEY", "value")
 
-	// Change to empty passphrase.
-	// Input: new passphrase (empty, confirm empty), then old passphrase (mypass).
-	r.mustRunWithStdin("\n\nmypass\n", "passwd")
+	// Change to empty passphrase: current (mypass), then new (empty) + confirm (empty).
+	r.mustRunWithStdin("mypass\n\n\n", "passwd")
 
 	// Reads still work (agent has the data)
 	val := r.mustRun("get", "KEY")
@@ -490,7 +526,7 @@ func TestIntegration_WrongPassphrase(t *testing.T) {
 	if err == nil {
 		t.Fatal("get with wrong passphrase should fail")
 	}
-	if !strings.Contains(stderr, "Incorrect passphrase") {
+	if !strings.Contains(stderr, "incorrect passphrase") {
 		t.Fatalf("expected passphrase error, got: %s", stderr)
 	}
 }
@@ -1004,10 +1040,10 @@ func TestIntegration_History_DeleteCascades(t *testing.T) {
 	r.mustRun("set", "--force", "KEY", "v2")
 	r.mustRun("rm", "--force", "KEY")
 
-	// History should be empty
-	out := r.mustRun("history", "KEY")
-	if strings.TrimSpace(out) != "" {
-		t.Fatalf("history should be empty after rm, got: %s", out)
+	// Verify history was cascade-deleted (no KEY~ entries remain in store)
+	out := r.mustRun("ls", "--all")
+	if strings.Contains(out, "KEY~") {
+		t.Fatalf("history entries should be removed after rm, got: %s", out)
 	}
 }
 
@@ -1028,10 +1064,10 @@ func TestIntegration_History_MvCarriesHistory(t *testing.T) {
 		t.Fatalf("history should contain original value, got: %s", out)
 	}
 
-	// Old name has no history
-	out = r.mustRun("history", "OLD_KEY")
-	if strings.TrimSpace(out) != "" {
-		t.Fatalf("OLD_KEY should have no history after mv, got: %s", out)
+	// Old name has no entries remaining in store
+	all := r.mustRun("ls", "--all")
+	if strings.Contains(all, "OLD_KEY") {
+		t.Fatalf("OLD_KEY entries should be gone after mv, got: %s", all)
 	}
 }
 

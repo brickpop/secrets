@@ -9,8 +9,9 @@ trap "$BIN agent stop 2>/dev/null; rm -rf $VARS_STORE_DIR $WORKDIR" EXIT
 
 contains() { echo "$1" | grep -q "$2"; }
 
-echo "--- set keys (first run auto-creates store) ---"
+echo "--- list keys (first run auto-creates store) ---"
 echo -e "\n\n" | $BIN ls
+echo "--- set keys ---"
 $BIN set RPC_URL https://rpc.example.com
 $BIN set PRIVATE_KEY 0xTESTKEY
 $BIN set ETHERSCAN_API abc123
@@ -43,10 +44,26 @@ keys:
   - RPC_URL
   - MISSING_KEY
 YAML
-contains "$($BIN resolve -f "$WORKDIR/.vars.yaml" --partial 2>/dev/null)" "MISSING_KEY"
+OUT=$($BIN resolve -f "$WORKDIR/.vars.yaml" --partial 2>/dev/null)
+contains "$OUT" "RPC_URL"
+! contains "$OUT" "MISSING_KEY"
+
+echo "--- resolve stdin dotenv ---"
+cat > "$WORKDIR/.vars.yaml" <<'YAML'
+keys:
+  - RPC_URL
+  - DOTENV_ONLY
+YAML
+OUT=$(printf 'DOTENV_ONLY=from_dotenv\nPASSTHROUGH=passthrough\n' | $BIN resolve -f "$WORKDIR/.vars.yaml" --partial 2>/dev/null)
+contains "$OUT" "RPC_URL"
+contains "$OUT" "DOTENV_ONLY"
+contains "$OUT" "from_dotenv"
+contains "$OUT" "PASSTHROUGH"
+contains "$OUT" "passthrough"
 
 echo "--- dump ---"
 contains "$($BIN dump --dotenv 2>/dev/null)" "ETHERSCAN_API"
+test "$($BIN dump | wc -l)" -eq 3
 
 echo "--- history ---"
 $BIN set --force RPC_URL https://rpc-v2.example.com
@@ -57,6 +74,7 @@ contains "$HIST" "https://rpc-v2.example.com"
 contains "$HIST" "RPC_URL~1:"
 contains "$HIST" "https://rpc.example.com"
 test "$($BIN ls | wc -l)" -eq 3
+test "$($BIN dump | wc -l)" -eq 3
 
 echo "--- rm ---"
 $BIN rm ETHERSCAN_API --force

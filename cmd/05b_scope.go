@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -52,7 +53,7 @@ var scopeLsCmd = &cobra.Command{
 		sort.Strings(scopes)
 
 		for _, s := range scopes {
-			fmt.Println(s)
+			fmt.Fprintln(os.Stdout, s)
 		}
 		return nil
 	},

@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Passphrase management (`vars passwd`) with empty passphrase support
 - Per-project manifests (`.vars.yaml`) with export to posix, fish, and dotenv formats
 - Per-developer remapping via `.vars-map.yaml`
-- `--partial` flag for export: emit empty values for missing keys instead of erroring
+- `--partial` flag for resolve: skip missing keys instead of erroring
 - Background agent (`vars agent`) holding decrypted store in memory with configurable TTL
 - Agent is read-only: serves get/list over Unix domain socket
 - Trial-decrypt for empty passphrases (no marker files, like OpenSSH)

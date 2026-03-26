@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -26,7 +27,13 @@ is allowed. The agent updates its internal state — no restart needed.`,
 
 		sockPath := agentSocketPath()
 
-		// Prompt for new passphrase first
+		// Prompt for current passphrase first (leave empty if none was set)
+		oldPass, err := stdinPrompter().Passphrase("Current passphrase (leave empty if none): ")
+		if err != nil {
+			return UserError(err.Error())
+		}
+
+		// Then prompt for new passphrase
 		newPass, err := stdinPrompter().PassphraseConfirm(
 			"New passphrase (leave empty for no passphrase): ",
 			"Confirm new passphrase: ",
@@ -35,12 +42,10 @@ is allowed. The agent updates its internal state — no restart needed.`,
 			return UserError(err.Error())
 		}
 
-		// Send to agent — withPassphrase handles the current passphrase
-		// via trial approach (empty first, prompt if required).
-		err = withPassphrase(func(oldPass string) error {
-			return agent.Passwd(sockPath, oldPass, newPass)
-		})
-		if err != nil {
+		if err := agent.Passwd(sockPath, oldPass, newPass); err != nil {
+			if strings.Contains(err.Error(), agent.ErrPassphraseRequired) {
+				return UserError("incorrect passphrase")
+			}
 			return UserError(err.Error())
 		}
 

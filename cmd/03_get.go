@@ -15,7 +15,7 @@ func init() {
 
 var getCmd = &cobra.Command{
 	Use:   "get <key>",
-	Short: "Get a secret from the store",
+	Short: "Get a key from the store",
 	Long:  `Print one value to stdout with no trailing newline. Pipes cleanly.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -27,7 +27,7 @@ var getCmd = &cobra.Command{
 
 		val, err := agent.Get(agentSocketPath(), key)
 		if err != nil {
-			return UserError(fmt.Sprintf("Key %q not found in store.", key))
+			return UserError(fmt.Sprintf("key %q not found in store", key))
 		}
 
 		fmt.Fprint(os.Stdout, val)

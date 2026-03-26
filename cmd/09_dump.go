@@ -35,7 +35,7 @@ Intended for debugging and migration only.`,
 			formatter = format.Dotenv
 		}
 
-		fmt.Fprintln(os.Stderr, "Warning: dumping all variables from the store.")
+		fmt.Fprintln(os.Stderr, "vars: dumping all variables from the store")
 
 		if err := ensureAgent(); err != nil {
 			return err

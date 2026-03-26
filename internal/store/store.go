@@ -251,7 +251,7 @@ func CheckPermissions() []string {
 		perm := info.Mode().Perm()
 		if perm != dirPerm {
 			warnings = append(warnings, fmt.Sprintf(
-				"Warning: %s has permissions %04o, expected %04o. Fix with: chmod %04o %s",
+				"%s has permissions %04o, expected %04o — fix with: chmod %04o %s",
 				dir, perm, dirPerm, dirPerm, dir,
 			))
 		}
@@ -262,7 +262,7 @@ func CheckPermissions() []string {
 		perm := info.Mode().Perm()
 		if perm != filePerm {
 			warnings = append(warnings, fmt.Sprintf(
-				"Warning: %s has permissions %04o, expected %04o. Fix with: chmod %04o %s",
+				"%s has permissions %04o, expected %04o — fix with: chmod %04o %s",
 				storePath, perm, filePerm, filePerm, storePath,
 			))
 		}
