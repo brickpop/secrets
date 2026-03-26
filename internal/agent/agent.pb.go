@@ -189,18 +189,69 @@ func (x *ListResponse) GetKeys() []string {
 	return nil
 }
 
-type SetRequest struct {
+type SetItem struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
-	Passphrase    string                 `protobuf:"bytes,3,opt,name=passphrase,proto3" json:"passphrase,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetItem) Reset() {
+	*x = SetItem{}
+	mi := &file_internal_agent_agent_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetItem) ProtoMessage() {}
+
+func (x *SetItem) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_agent_agent_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetItem.ProtoReflect.Descriptor instead.
+func (*SetItem) Descriptor() ([]byte, []int) {
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SetItem) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *SetItem) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+type SetRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*SetItem             `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	Passphrase    string                 `protobuf:"bytes,2,opt,name=passphrase,proto3" json:"passphrase,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SetRequest) Reset() {
 	*x = SetRequest{}
-	mi := &file_internal_agent_agent_proto_msgTypes[4]
+	mi := &file_internal_agent_agent_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -212,7 +263,7 @@ func (x *SetRequest) String() string {
 func (*SetRequest) ProtoMessage() {}
 
 func (x *SetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[4]
+	mi := &file_internal_agent_agent_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -225,21 +276,14 @@ func (x *SetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetRequest.ProtoReflect.Descriptor instead.
 func (*SetRequest) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{4}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *SetRequest) GetKey() string {
+func (x *SetRequest) GetItems() []*SetItem {
 	if x != nil {
-		return x.Key
+		return x.Items
 	}
-	return ""
-}
-
-func (x *SetRequest) GetValue() string {
-	if x != nil {
-		return x.Value
-	}
-	return ""
+	return nil
 }
 
 func (x *SetRequest) GetPassphrase() string {
@@ -257,7 +301,7 @@ type SetResponse struct {
 
 func (x *SetResponse) Reset() {
 	*x = SetResponse{}
-	mi := &file_internal_agent_agent_proto_msgTypes[5]
+	mi := &file_internal_agent_agent_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -269,7 +313,7 @@ func (x *SetResponse) String() string {
 func (*SetResponse) ProtoMessage() {}
 
 func (x *SetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[5]
+	mi := &file_internal_agent_agent_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -282,12 +326,12 @@ func (x *SetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetResponse.ProtoReflect.Descriptor instead.
 func (*SetResponse) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{5}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{6}
 }
 
 type DeleteRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Keys          []string               `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
 	Passphrase    string                 `protobuf:"bytes,2,opt,name=passphrase,proto3" json:"passphrase,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -295,7 +339,7 @@ type DeleteRequest struct {
 
 func (x *DeleteRequest) Reset() {
 	*x = DeleteRequest{}
-	mi := &file_internal_agent_agent_proto_msgTypes[6]
+	mi := &file_internal_agent_agent_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -307,7 +351,7 @@ func (x *DeleteRequest) String() string {
 func (*DeleteRequest) ProtoMessage() {}
 
 func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[6]
+	mi := &file_internal_agent_agent_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -320,14 +364,14 @@ func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRequest) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{6}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *DeleteRequest) GetKey() string {
+func (x *DeleteRequest) GetKeys() []string {
 	if x != nil {
-		return x.Key
+		return x.Keys
 	}
-	return ""
+	return nil
 }
 
 func (x *DeleteRequest) GetPassphrase() string {
@@ -345,7 +389,7 @@ type DeleteResponse struct {
 
 func (x *DeleteResponse) Reset() {
 	*x = DeleteResponse{}
-	mi := &file_internal_agent_agent_proto_msgTypes[7]
+	mi := &file_internal_agent_agent_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -357,7 +401,7 @@ func (x *DeleteResponse) String() string {
 func (*DeleteResponse) ProtoMessage() {}
 
 func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[7]
+	mi := &file_internal_agent_agent_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -370,7 +414,7 @@ func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteResponse) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{7}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{8}
 }
 
 type HistoryRequest struct {
@@ -382,7 +426,7 @@ type HistoryRequest struct {
 
 func (x *HistoryRequest) Reset() {
 	*x = HistoryRequest{}
-	mi := &file_internal_agent_agent_proto_msgTypes[8]
+	mi := &file_internal_agent_agent_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -394,7 +438,7 @@ func (x *HistoryRequest) String() string {
 func (*HistoryRequest) ProtoMessage() {}
 
 func (x *HistoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[8]
+	mi := &file_internal_agent_agent_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -407,7 +451,7 @@ func (x *HistoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HistoryRequest.ProtoReflect.Descriptor instead.
 func (*HistoryRequest) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{8}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *HistoryRequest) GetKey() string {
@@ -427,7 +471,7 @@ type HistoryResponse struct {
 
 func (x *HistoryResponse) Reset() {
 	*x = HistoryResponse{}
-	mi := &file_internal_agent_agent_proto_msgTypes[9]
+	mi := &file_internal_agent_agent_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -439,7 +483,7 @@ func (x *HistoryResponse) String() string {
 func (*HistoryResponse) ProtoMessage() {}
 
 func (x *HistoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[9]
+	mi := &file_internal_agent_agent_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -452,7 +496,7 @@ func (x *HistoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HistoryResponse.ProtoReflect.Descriptor instead.
 func (*HistoryResponse) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{9}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *HistoryResponse) GetKeys() []string {
@@ -479,7 +523,7 @@ type PasswdRequest struct {
 
 func (x *PasswdRequest) Reset() {
 	*x = PasswdRequest{}
-	mi := &file_internal_agent_agent_proto_msgTypes[10]
+	mi := &file_internal_agent_agent_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -491,7 +535,7 @@ func (x *PasswdRequest) String() string {
 func (*PasswdRequest) ProtoMessage() {}
 
 func (x *PasswdRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[10]
+	mi := &file_internal_agent_agent_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -504,7 +548,7 @@ func (x *PasswdRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PasswdRequest.ProtoReflect.Descriptor instead.
 func (*PasswdRequest) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{10}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *PasswdRequest) GetPassphrase() string {
@@ -529,7 +573,7 @@ type PasswdResponse struct {
 
 func (x *PasswdResponse) Reset() {
 	*x = PasswdResponse{}
-	mi := &file_internal_agent_agent_proto_msgTypes[11]
+	mi := &file_internal_agent_agent_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -541,7 +585,7 @@ func (x *PasswdResponse) String() string {
 func (*PasswdResponse) ProtoMessage() {}
 
 func (x *PasswdResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[11]
+	mi := &file_internal_agent_agent_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -554,7 +598,7 @@ func (x *PasswdResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PasswdResponse.ProtoReflect.Descriptor instead.
 func (*PasswdResponse) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{11}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{12}
 }
 
 // seconds: -1 = stop immediately, 0 = no expiry, >0 = lifetime in seconds
@@ -567,7 +611,7 @@ type SetAgentTTLRequest struct {
 
 func (x *SetAgentTTLRequest) Reset() {
 	*x = SetAgentTTLRequest{}
-	mi := &file_internal_agent_agent_proto_msgTypes[12]
+	mi := &file_internal_agent_agent_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -579,7 +623,7 @@ func (x *SetAgentTTLRequest) String() string {
 func (*SetAgentTTLRequest) ProtoMessage() {}
 
 func (x *SetAgentTTLRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[12]
+	mi := &file_internal_agent_agent_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -592,7 +636,7 @@ func (x *SetAgentTTLRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetAgentTTLRequest.ProtoReflect.Descriptor instead.
 func (*SetAgentTTLRequest) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{12}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SetAgentTTLRequest) GetSeconds() int64 {
@@ -610,7 +654,7 @@ type SetAgentTTLResponse struct {
 
 func (x *SetAgentTTLResponse) Reset() {
 	*x = SetAgentTTLResponse{}
-	mi := &file_internal_agent_agent_proto_msgTypes[13]
+	mi := &file_internal_agent_agent_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -622,7 +666,7 @@ func (x *SetAgentTTLResponse) String() string {
 func (*SetAgentTTLResponse) ProtoMessage() {}
 
 func (x *SetAgentTTLResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[13]
+	mi := &file_internal_agent_agent_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -635,7 +679,7 @@ func (x *SetAgentTTLResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetAgentTTLResponse.ProtoReflect.Descriptor instead.
 func (*SetAgentTTLResponse) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{13}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{14}
 }
 
 type RenameRequest struct {
@@ -649,7 +693,7 @@ type RenameRequest struct {
 
 func (x *RenameRequest) Reset() {
 	*x = RenameRequest{}
-	mi := &file_internal_agent_agent_proto_msgTypes[14]
+	mi := &file_internal_agent_agent_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -661,7 +705,7 @@ func (x *RenameRequest) String() string {
 func (*RenameRequest) ProtoMessage() {}
 
 func (x *RenameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[14]
+	mi := &file_internal_agent_agent_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -674,7 +718,7 @@ func (x *RenameRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenameRequest.ProtoReflect.Descriptor instead.
 func (*RenameRequest) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{14}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *RenameRequest) GetFrom() string {
@@ -706,7 +750,7 @@ type RenameResponse struct {
 
 func (x *RenameResponse) Reset() {
 	*x = RenameResponse{}
-	mi := &file_internal_agent_agent_proto_msgTypes[15]
+	mi := &file_internal_agent_agent_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -718,7 +762,7 @@ func (x *RenameResponse) String() string {
 func (*RenameResponse) ProtoMessage() {}
 
 func (x *RenameResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_agent_agent_proto_msgTypes[15]
+	mi := &file_internal_agent_agent_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -731,7 +775,7 @@ func (x *RenameResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenameResponse.ProtoReflect.Descriptor instead.
 func (*RenameResponse) Descriptor() ([]byte, []int) {
-	return file_internal_agent_agent_proto_rawDescGZIP(), []int{15}
+	return file_internal_agent_agent_proto_rawDescGZIP(), []int{16}
 }
 
 var File_internal_agent_agent_proto protoreflect.FileDescriptor
@@ -746,17 +790,19 @@ const file_internal_agent_agent_proto_rawDesc = "" +
 	"\x05value\x18\x01 \x01(\tR\x05value\"\r\n" +
 	"\vListRequest\"\"\n" +
 	"\fListResponse\x12\x12\n" +
-	"\x04keys\x18\x01 \x03(\tR\x04keys\"T\n" +
-	"\n" +
-	"SetRequest\x12\x10\n" +
+	"\x04keys\x18\x01 \x03(\tR\x04keys\"1\n" +
+	"\aSetItem\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\x12\x1e\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"R\n" +
 	"\n" +
-	"passphrase\x18\x03 \x01(\tR\n" +
+	"SetRequest\x12$\n" +
+	"\x05items\x18\x01 \x03(\v2\x0e.agent.SetItemR\x05items\x12\x1e\n" +
+	"\n" +
+	"passphrase\x18\x02 \x01(\tR\n" +
 	"passphrase\"\r\n" +
-	"\vSetResponse\"A\n" +
-	"\rDeleteRequest\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1e\n" +
+	"\vSetResponse\"C\n" +
+	"\rDeleteRequest\x12\x12\n" +
+	"\x04keys\x18\x01 \x03(\tR\x04keys\x12\x1e\n" +
 	"\n" +
 	"passphrase\x18\x02 \x01(\tR\n" +
 	"passphrase\"\x10\n" +
@@ -804,47 +850,49 @@ func file_internal_agent_agent_proto_rawDescGZIP() []byte {
 	return file_internal_agent_agent_proto_rawDescData
 }
 
-var file_internal_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_internal_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_internal_agent_agent_proto_goTypes = []any{
 	(*GetRequest)(nil),          // 0: agent.GetRequest
 	(*GetResponse)(nil),         // 1: agent.GetResponse
 	(*ListRequest)(nil),         // 2: agent.ListRequest
 	(*ListResponse)(nil),        // 3: agent.ListResponse
-	(*SetRequest)(nil),          // 4: agent.SetRequest
-	(*SetResponse)(nil),         // 5: agent.SetResponse
-	(*DeleteRequest)(nil),       // 6: agent.DeleteRequest
-	(*DeleteResponse)(nil),      // 7: agent.DeleteResponse
-	(*HistoryRequest)(nil),      // 8: agent.HistoryRequest
-	(*HistoryResponse)(nil),     // 9: agent.HistoryResponse
-	(*PasswdRequest)(nil),       // 10: agent.PasswdRequest
-	(*PasswdResponse)(nil),      // 11: agent.PasswdResponse
-	(*SetAgentTTLRequest)(nil),  // 12: agent.SetAgentTTLRequest
-	(*SetAgentTTLResponse)(nil), // 13: agent.SetAgentTTLResponse
-	(*RenameRequest)(nil),       // 14: agent.RenameRequest
-	(*RenameResponse)(nil),      // 15: agent.RenameResponse
+	(*SetItem)(nil),             // 4: agent.SetItem
+	(*SetRequest)(nil),          // 5: agent.SetRequest
+	(*SetResponse)(nil),         // 6: agent.SetResponse
+	(*DeleteRequest)(nil),       // 7: agent.DeleteRequest
+	(*DeleteResponse)(nil),      // 8: agent.DeleteResponse
+	(*HistoryRequest)(nil),      // 9: agent.HistoryRequest
+	(*HistoryResponse)(nil),     // 10: agent.HistoryResponse
+	(*PasswdRequest)(nil),       // 11: agent.PasswdRequest
+	(*PasswdResponse)(nil),      // 12: agent.PasswdResponse
+	(*SetAgentTTLRequest)(nil),  // 13: agent.SetAgentTTLRequest
+	(*SetAgentTTLResponse)(nil), // 14: agent.SetAgentTTLResponse
+	(*RenameRequest)(nil),       // 15: agent.RenameRequest
+	(*RenameResponse)(nil),      // 16: agent.RenameResponse
 }
 var file_internal_agent_agent_proto_depIdxs = []int32{
-	0,  // 0: agent.Vars.Get:input_type -> agent.GetRequest
-	2,  // 1: agent.Vars.List:input_type -> agent.ListRequest
-	4,  // 2: agent.Vars.Set:input_type -> agent.SetRequest
-	6,  // 3: agent.Vars.Delete:input_type -> agent.DeleteRequest
-	10, // 4: agent.Vars.Passwd:input_type -> agent.PasswdRequest
-	14, // 5: agent.Vars.Rename:input_type -> agent.RenameRequest
-	8,  // 6: agent.Vars.History:input_type -> agent.HistoryRequest
-	12, // 7: agent.Vars.SetAgentTTL:input_type -> agent.SetAgentTTLRequest
-	1,  // 8: agent.Vars.Get:output_type -> agent.GetResponse
-	3,  // 9: agent.Vars.List:output_type -> agent.ListResponse
-	5,  // 10: agent.Vars.Set:output_type -> agent.SetResponse
-	7,  // 11: agent.Vars.Delete:output_type -> agent.DeleteResponse
-	11, // 12: agent.Vars.Passwd:output_type -> agent.PasswdResponse
-	15, // 13: agent.Vars.Rename:output_type -> agent.RenameResponse
-	9,  // 14: agent.Vars.History:output_type -> agent.HistoryResponse
-	13, // 15: agent.Vars.SetAgentTTL:output_type -> agent.SetAgentTTLResponse
-	8,  // [8:16] is the sub-list for method output_type
-	0,  // [0:8] is the sub-list for method input_type
-	0,  // [0:0] is the sub-list for extension type_name
-	0,  // [0:0] is the sub-list for extension extendee
-	0,  // [0:0] is the sub-list for field type_name
+	4,  // 0: agent.SetRequest.items:type_name -> agent.SetItem
+	0,  // 1: agent.Vars.Get:input_type -> agent.GetRequest
+	2,  // 2: agent.Vars.List:input_type -> agent.ListRequest
+	5,  // 3: agent.Vars.Set:input_type -> agent.SetRequest
+	7,  // 4: agent.Vars.Delete:input_type -> agent.DeleteRequest
+	11, // 5: agent.Vars.Passwd:input_type -> agent.PasswdRequest
+	15, // 6: agent.Vars.Rename:input_type -> agent.RenameRequest
+	9,  // 7: agent.Vars.History:input_type -> agent.HistoryRequest
+	13, // 8: agent.Vars.SetAgentTTL:input_type -> agent.SetAgentTTLRequest
+	1,  // 9: agent.Vars.Get:output_type -> agent.GetResponse
+	3,  // 10: agent.Vars.List:output_type -> agent.ListResponse
+	6,  // 11: agent.Vars.Set:output_type -> agent.SetResponse
+	8,  // 12: agent.Vars.Delete:output_type -> agent.DeleteResponse
+	12, // 13: agent.Vars.Passwd:output_type -> agent.PasswdResponse
+	16, // 14: agent.Vars.Rename:output_type -> agent.RenameResponse
+	10, // 15: agent.Vars.History:output_type -> agent.HistoryResponse
+	14, // 16: agent.Vars.SetAgentTTL:output_type -> agent.SetAgentTTLResponse
+	9,  // [9:17] is the sub-list for method output_type
+	1,  // [1:9] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_internal_agent_agent_proto_init() }
@@ -858,7 +906,7 @@ func file_internal_agent_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_agent_agent_proto_rawDesc), len(file_internal_agent_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

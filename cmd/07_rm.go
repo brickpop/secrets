@@ -57,12 +57,7 @@ var rmCmd = &cobra.Command{
 		}
 
 		err := withPassphrase("Enter passphrase to confirm: ", func(passphrase string) error {
-			for _, key := range args {
-				if err := agent.Delete(sockPath, key, passphrase); err != nil {
-					return err
-				}
-			}
-			return nil
+			return agent.Delete(sockPath, args, passphrase)
 		})
 		if err != nil {
 			return UserError(err.Error())

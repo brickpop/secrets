@@ -175,20 +175,26 @@ func (s *Server) Set(_ context.Context, req *SetRequest) (*SetResponse, error) {
 	s.dataMu.Lock()
 	defer s.dataMu.Unlock()
 
-	old, exists := s.data[req.Key]
-	if exists {
-		if !s.checkPassphrase(req.Passphrase) {
-			return nil, status.Error(codes.PermissionDenied, ErrPassphraseRequired)
+	// Check passphrase once upfront: required if any item overwrites an existing key.
+	for _, item := range req.Items {
+		if _, exists := s.data[item.Key]; exists {
+			if !s.checkPassphrase(req.Passphrase) {
+				return nil, status.Error(codes.PermissionDenied, ErrPassphraseRequired)
+			}
+			break // verified once is enough
 		}
-		// Record old value as history before overwriting.
-		n := nextHistorySuffix(s.data, req.Key)
-		s.data[req.Key+"~"+strconv.Itoa(n)] = old
 	}
 
-	s.data[req.Key] = req.Value
+	// Apply all mutations, recording history for overwrites.
+	for _, item := range req.Items {
+		if old, exists := s.data[item.Key]; exists {
+			n := nextHistorySuffix(s.data, item.Key)
+			s.data[item.Key+"~"+strconv.Itoa(n)] = old
+		}
+		s.data[item.Key] = item.Value
+	}
 
 	if err := store.SaveData(s.data, s.backend, s.storeDir); err != nil {
-		delete(s.data, req.Key)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("saving store: %v", err))
 	}
 
@@ -203,16 +209,33 @@ func (s *Server) Delete(_ context.Context, req *DeleteRequest) (*DeleteResponse,
 		return nil, status.Error(codes.PermissionDenied, ErrPassphraseRequired)
 	}
 
-	if _, exists := s.data[req.Key]; !exists {
-		return nil, status.Error(codes.NotFound, "key not found")
+	// Verify all keys exist before mutating anything.
+	for _, key := range req.Keys {
+		if _, exists := s.data[key]; !exists {
+			return nil, status.Error(codes.NotFound, "key not found: "+key)
+		}
 	}
 
-	delete(s.data, req.Key)
-	for _, hk := range historyKeys(s.data, req.Key) {
-		delete(s.data, hk)
+	// Snapshot for rollback on save failure.
+	snapshot := make(map[string]string)
+	for _, key := range req.Keys {
+		snapshot[key] = s.data[key]
+		for _, hk := range historyKeys(s.data, key) {
+			snapshot[hk] = s.data[hk]
+		}
+	}
+
+	for _, key := range req.Keys {
+		delete(s.data, key)
+		for _, hk := range historyKeys(s.data, key) {
+			delete(s.data, hk)
+		}
 	}
 
 	if err := store.SaveData(s.data, s.backend, s.storeDir); err != nil {
+		for k, v := range snapshot {
+			s.data[k] = v
+		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("saving store: %v", err))
 	}
 

@@ -64,6 +64,16 @@ func startTestServer(t *testing.T, data map[string]string, passphrase string, tt
 	return sockPath, srv
 }
 
+// set is a test helper for single-key Set.
+func set(sockPath, key, value, passphrase string) error {
+	return Set(sockPath, []SetItem{{Key: key, Value: value}}, passphrase)
+}
+
+// del is a test helper for single-key Delete.
+func del(sockPath, key, passphrase string) error {
+	return Delete(sockPath, []string{key}, passphrase)
+}
+
 // --- Read tests ---
 
 func TestGetExisting(t *testing.T) {
@@ -317,8 +327,7 @@ func TestSetNewKey_NoPassphrase(t *testing.T) {
 	defer srv.Stop()
 
 	// New key should work without passphrase
-	err := Set(sockPath, "NEW_KEY", "new_value", "")
-	if err != nil {
+	if err := set(sockPath, "NEW_KEY", "new_value", ""); err != nil {
 		t.Fatalf("Set new key: %v", err)
 	}
 
@@ -338,7 +347,7 @@ func TestSetOverwrite_RequiresPassphrase(t *testing.T) {
 	defer srv.Stop()
 
 	// Overwrite with wrong passphrase should fail
-	err := Set(sockPath, "KEY", "new_value", "wrong")
+	err := set(sockPath, "KEY", "new_value", "wrong")
 	if err == nil {
 		t.Fatal("overwrite with wrong passphrase should fail")
 	}
@@ -353,8 +362,7 @@ func TestSetOverwrite_RequiresPassphrase(t *testing.T) {
 	}
 
 	// Overwrite with correct passphrase should succeed
-	err = Set(sockPath, "KEY", "new_value", "secret")
-	if err != nil {
+	if err := set(sockPath, "KEY", "new_value", "secret"); err != nil {
 		t.Fatalf("overwrite with correct passphrase: %v", err)
 	}
 
@@ -371,14 +379,90 @@ func TestSetOverwrite_EmptyPassphrase(t *testing.T) {
 	defer srv.Stop()
 
 	// Overwrite with empty passphrase (store has no passphrase) should work
-	err := Set(sockPath, "KEY", "new_value", "")
-	if err != nil {
+	if err := set(sockPath, "KEY", "new_value", ""); err != nil {
 		t.Fatalf("overwrite with empty passphrase: %v", err)
 	}
 
 	val, _ := Get(sockPath, "KEY")
 	if val != "new_value" {
 		t.Fatalf("Get = %q, want %q", val, "new_value")
+	}
+}
+
+func TestSetBatch(t *testing.T) {
+	sockPath, srv := startTestServer(t, map[string]string{
+		"EXISTING": "old",
+	}, "secret", 0)
+	defer srv.Stop()
+
+	// Batch with mix of new and overwrite keys — one save, one passphrase check
+	items := []SetItem{
+		{Key: "NEW_A", Value: "a"},
+		{Key: "NEW_B", Value: "b"},
+		{Key: "EXISTING", Value: "new"},
+	}
+	if err := Set(sockPath, items, "secret"); err != nil {
+		t.Fatalf("BatchSet: %v", err)
+	}
+
+	for key, want := range map[string]string{"NEW_A": "a", "NEW_B": "b", "EXISTING": "new"} {
+		val, err := Get(sockPath, key)
+		if err != nil {
+			t.Fatalf("Get %s: %v", key, err)
+		}
+		if val != want {
+			t.Fatalf("Get %s = %q, want %q", key, val, want)
+		}
+	}
+}
+
+func TestSetBatch_WrongPassphrase(t *testing.T) {
+	sockPath, srv := startTestServer(t, map[string]string{
+		"EXISTING": "old",
+	}, "secret", 0)
+	defer srv.Stop()
+
+	// Batch fails entirely if passphrase wrong for any overwrite
+	items := []SetItem{
+		{Key: "NEW_KEY", Value: "new"},
+		{Key: "EXISTING", Value: "updated"},
+	}
+	if err := Set(sockPath, items, "wrong"); err == nil {
+		t.Fatal("batch with wrong passphrase should fail")
+	}
+
+	// Neither key should have changed
+	if _, err := Get(sockPath, "NEW_KEY"); err == nil {
+		t.Fatal("NEW_KEY should not have been set")
+	}
+	val, _ := Get(sockPath, "EXISTING")
+	if val != "old" {
+		t.Fatalf("EXISTING changed despite failed batch: %q", val)
+	}
+}
+
+func TestDeleteBatch(t *testing.T) {
+	sockPath, srv := startTestServer(t, map[string]string{
+		"KEY_A": "a",
+		"KEY_B": "b",
+		"KEY_C": "c",
+	}, "secret", 0)
+	defer srv.Stop()
+
+	if err := Delete(sockPath, []string{"KEY_A", "KEY_B"}, "secret"); err != nil {
+		t.Fatalf("BatchDelete: %v", err)
+	}
+
+	if _, err := Get(sockPath, "KEY_A"); err == nil {
+		t.Fatal("KEY_A should be gone")
+	}
+	if _, err := Get(sockPath, "KEY_B"); err == nil {
+		t.Fatal("KEY_B should be gone")
+	}
+	// KEY_C untouched
+	val, err := Get(sockPath, "KEY_C")
+	if err != nil || val != "c" {
+		t.Fatalf("KEY_C = %q, want %q", val, "c")
 	}
 }
 
@@ -389,7 +473,7 @@ func TestDelete_RequiresPassphrase(t *testing.T) {
 	defer srv.Stop()
 
 	// Delete with wrong passphrase
-	err := Delete(sockPath, "KEY", "wrong")
+	err := del(sockPath, "KEY", "wrong")
 	if err == nil {
 		t.Fatal("delete with wrong passphrase should fail")
 	}
@@ -404,14 +488,11 @@ func TestDelete_RequiresPassphrase(t *testing.T) {
 	}
 
 	// Delete with correct passphrase
-	err = Delete(sockPath, "KEY", "secret")
-	if err != nil {
+	if err := del(sockPath, "KEY", "secret"); err != nil {
 		t.Fatalf("delete with correct passphrase: %v", err)
 	}
 
-	// Key should be gone
-	_, err = Get(sockPath, "KEY")
-	if err == nil {
+	if _, err := Get(sockPath, "KEY"); err == nil {
 		t.Fatal("key should be gone after delete")
 	}
 }
@@ -420,8 +501,7 @@ func TestDelete_NonexistentKey(t *testing.T) {
 	sockPath, srv := startTestServer(t, map[string]string{}, "secret", 0)
 	defer srv.Stop()
 
-	err := Delete(sockPath, "NONEXISTENT", "secret")
-	if err == nil {
+	if err := del(sockPath, "NONEXISTENT", "secret"); err == nil {
 		t.Fatal("delete nonexistent should fail")
 	}
 }
@@ -433,14 +513,12 @@ func TestPasswd(t *testing.T) {
 	defer srv.Stop()
 
 	// Wrong old passphrase
-	err := Passwd(sockPath, "wrong", "newpass")
-	if err == nil {
+	if err := Passwd(sockPath, "wrong", "newpass"); err == nil {
 		t.Fatal("passwd with wrong old passphrase should fail")
 	}
 
 	// Correct old passphrase
-	err = Passwd(sockPath, "oldpass", "newpass")
-	if err != nil {
+	if err := Passwd(sockPath, "oldpass", "newpass"); err != nil {
 		t.Fatalf("passwd: %v", err)
 	}
 
@@ -454,14 +532,12 @@ func TestPasswd(t *testing.T) {
 	}
 
 	// Old passphrase should no longer work for writes
-	err = Set(sockPath, "KEY", "updated", "oldpass")
-	if err == nil {
+	if err := set(sockPath, "KEY", "updated", "oldpass"); err == nil {
 		t.Fatal("old passphrase should no longer work")
 	}
 
 	// New passphrase should work for writes
-	err = Set(sockPath, "KEY", "updated", "newpass")
-	if err != nil {
+	if err := set(sockPath, "KEY", "updated", "newpass"); err != nil {
 		t.Fatalf("set with new passphrase: %v", err)
 	}
 }
@@ -472,19 +548,16 @@ func TestPasswd_EmptyToSet(t *testing.T) {
 	}, "", 0)
 	defer srv.Stop()
 
-	err := Passwd(sockPath, "", "newpass")
-	if err != nil {
+	if err := Passwd(sockPath, "", "newpass"); err != nil {
 		t.Fatalf("passwd empty to set: %v", err)
 	}
 
 	// Now overwrites require newpass
-	err = Set(sockPath, "KEY", "updated", "")
-	if err == nil {
+	if err := set(sockPath, "KEY", "updated", ""); err == nil {
 		t.Fatal("empty passphrase should no longer work")
 	}
 
-	err = Set(sockPath, "KEY", "updated", "newpass")
-	if err != nil {
+	if err := set(sockPath, "KEY", "updated", "newpass"); err != nil {
 		t.Fatalf("set with new passphrase: %v", err)
 	}
 }
@@ -503,8 +576,7 @@ func TestConcurrentSets(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			key := fmt.Sprintf("KEY_%d", i)
-			err := Set(sockPath, key, fmt.Sprintf("value_%d", i), "")
+			err := set(sockPath, fmt.Sprintf("KEY_%d", i), fmt.Sprintf("value_%d", i), "")
 			if err != nil {
 				errors <- err
 			}
@@ -535,10 +607,10 @@ func TestHistory_RecordedOnOverwrite(t *testing.T) {
 	}, "secret", 0)
 	defer srv.Stop()
 
-	if err := Set(sockPath, "KEY", "v2", "secret"); err != nil {
+	if err := set(sockPath, "KEY", "v2", "secret"); err != nil {
 		t.Fatalf("Set v2: %v", err)
 	}
-	if err := Set(sockPath, "KEY", "v3", "secret"); err != nil {
+	if err := set(sockPath, "KEY", "v3", "secret"); err != nil {
 		t.Fatalf("Set v3: %v", err)
 	}
 
@@ -565,7 +637,7 @@ func TestHistory_NotInList(t *testing.T) {
 	}, "secret", 0)
 	defer srv.Stop()
 
-	if err := Set(sockPath, "KEY", "v2", "secret"); err != nil {
+	if err := set(sockPath, "KEY", "v2", "secret"); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 
@@ -586,11 +658,11 @@ func TestHistory_DeleteCascades(t *testing.T) {
 	}, "secret", 0)
 	defer srv.Stop()
 
-	if err := Set(sockPath, "KEY", "v2", "secret"); err != nil {
+	if err := set(sockPath, "KEY", "v2", "secret"); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 
-	if err := Delete(sockPath, "KEY", "secret"); err != nil {
+	if err := del(sockPath, "KEY", "secret"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
@@ -609,7 +681,7 @@ func TestHistory_RenameCarriesHistory(t *testing.T) {
 	}, "secret", 0)
 	defer srv.Stop()
 
-	if err := Set(sockPath, "OLD", "v2", "secret"); err != nil {
+	if err := set(sockPath, "OLD", "v2", "secret"); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 
@@ -639,7 +711,7 @@ func TestHistory_EmptyForNewKey(t *testing.T) {
 	sockPath, srv := startTestServer(t, map[string]string{}, "", 0)
 	defer srv.Stop()
 
-	if err := Set(sockPath, "KEY", "v1", ""); err != nil {
+	if err := set(sockPath, "KEY", "v1", ""); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 
@@ -669,7 +741,7 @@ func TestSetPersistsToDisk(t *testing.T) {
 	defer srv.Stop()
 
 	// Set a key via agent
-	if err := Set(sockPath, "PERSIST", "disk_value", ""); err != nil {
+	if err := set(sockPath, "PERSIST", "disk_value", ""); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 

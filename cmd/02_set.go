@@ -120,13 +120,14 @@ shell history).`,
 			break
 		}
 
+		item := []agent.SetItem{{Key: key, Value: value}}
 		var setErr error
 		if isOverwrite {
 			setErr = withPassphrase("Enter passphrase to confirm overwrite: ", func(passphrase string) error {
-				return agent.Set(sockPath, key, value, passphrase)
+				return agent.Set(sockPath, item, passphrase)
 			})
 		} else {
-			setErr = agent.Set(sockPath, key, value, "")
+			setErr = agent.Set(sockPath, item, "")
 		}
 		if setErr != nil {
 			return UserError(setErr.Error())

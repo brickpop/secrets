@@ -73,29 +73,12 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 
 		isTTY := term.IsTerminal(int(os.Stdin.Fd()))
 
-		// doSet tries with the cached passphrase (initially ""), prompting once on
-		// ErrPassphraseRequired and caching the result for subsequent overwrites.
-		var passphrase string
-		passphraseObtained := false
-		doSet := func(key, value string) error {
-			err := agent.Set(sockPath, key, value, passphrase)
-			if err == nil {
-				return nil
-			}
-			if !strings.Contains(err.Error(), agent.ErrPassphraseRequired) {
-				return err
-			}
-			if !passphraseObtained {
-				p, promptErr := stdinPrompter().Passphrase("Enter passphrase to confirm overwrite: ")
-				if promptErr != nil {
-					return promptErr
-				}
-				passphrase = p
-				passphraseObtained = true
-			}
-			return agent.Set(sockPath, key, value, passphrase)
+		type pendingItem struct {
+			key         string
+			value       string
+			isOverwrite bool
 		}
-
+		var pending []pendingItem
 		var imported, overwritten, skipped int
 
 	entryLoop:
@@ -107,10 +90,8 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 				existing, getErr := agent.Get(sockPath, key)
 
 				if getErr != nil {
-					// Key does not exist — import freely
-					if setErr := agent.Set(sockPath, key, value, ""); setErr != nil {
-						return InternalError(fmt.Sprintf("setting %s: %v", key, setErr))
-					}
+					// New key
+					pending = append(pending, pendingItem{key, value, false})
 					imported++
 					continue entryLoop
 				}
@@ -129,9 +110,7 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 				}
 
 				if importForce {
-					if err := doSet(key, value); err != nil {
-						return InternalError(fmt.Sprintf("overwriting %s: %v", key, err))
-					}
+					pending = append(pending, pendingItem{key, value, true})
 					overwritten++
 					continue entryLoop
 				}
@@ -149,9 +128,7 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 
 				switch c := strings.ToLower(strings.TrimSpace(choice)); {
 				case strings.HasPrefix(c, "o"):
-					if err := doSet(key, value); err != nil {
-						return InternalError(fmt.Sprintf("overwriting %s: %v", key, err))
-					}
+					pending = append(pending, pendingItem{key, value, true})
 					overwritten++
 					continue entryLoop
 
@@ -174,6 +151,33 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 					skipped++
 					continue entryLoop
 				}
+			}
+		}
+
+		if len(pending) > 0 {
+			items := make([]agent.SetItem, len(pending))
+			for i, p := range pending {
+				items[i] = agent.SetItem{Key: p.key, Value: p.value}
+			}
+
+			hasOverwrite := false
+			for _, p := range pending {
+				if p.isOverwrite {
+					hasOverwrite = true
+					break
+				}
+			}
+
+			var setErr error
+			if hasOverwrite {
+				setErr = withPassphrase("Enter passphrase to confirm overwrite: ", func(passphrase string) error {
+					return agent.Set(sockPath, items, passphrase)
+				})
+			} else {
+				setErr = agent.Set(sockPath, items, "")
+			}
+			if setErr != nil {
+				return UserError(setErr.Error())
 			}
 		}
 

@@ -27,15 +27,18 @@ message ListResponse {
   repeated string keys = 1;
 }
 
-message SetRequest {
+message SetItem {
   string key = 1;
   string value = 2;
-  string passphrase = 3;
+}
+message SetRequest {
+  repeated SetItem items = 1;
+  string passphrase = 2;
 }
 message SetResponse {}
 
 message DeleteRequest {
-  string key = 1;
+  repeated string keys = 1;
   string passphrase = 2;
 }
 message DeleteResponse {}
