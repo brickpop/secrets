@@ -86,7 +86,7 @@ As your store grows, you may have multiple variants of the same key — a `prod`
 vars set prod/PRIVATE_KEY "0xPRODKEY"
 vars set hoodi/PRIVATE_KEY "0xTESTKEY"
 vars set hoodi/dev/PRIVATE_KEY "0xTESTKEY2"    # nested scope
-vars set ETHERSCAN_API_KEY "abc123"            # shared, no scope needed
+vars set SERVER_API_KEY "abc123"            # shared, no scope needed
 ```
 
 List keys by scope:
@@ -109,7 +109,7 @@ If you have scoped variables, you will need `resolve` to know which scope to use
 keys:
   - PRIVATE_KEY
   - RPC_URL
-  - ETHERSCAN_API_KEY
+  - SERVER_API_KEY
 
 profiles:
   default:
@@ -127,7 +127,7 @@ vars resolve -p mainnet   # mappings from the mainnet profile
 
 `PRIVATE_KEY` will resolve to either `sepolia/PRIVATE_KEY` (by default) or to `prod/PRIVATE_KEY` when `-p mainnet` is passed. 
 
-Profiles are opt-in. Any keys (`ETHERSCAN_API_KEY`) not listed in a profile continue to work as usual.
+Profiles are opt-in. Any keys (`SERVER_API_KEY`) not listed in a profile continue to work as usual.
 
 ### Scope fallback in resolve
 
@@ -143,7 +143,7 @@ Use `mappings:` to rename store keys for everyone on the team, regardless of the
 
 ```yaml
 mappings:
-  ETHERSCAN_API_KEY: ETHERSCAN_API_KEY_v2    # applies to all profiles
+  SERVER_API_KEY: SERVER_API_KEY_v2    # applies to all profiles
 ```
 
 ---
@@ -229,7 +229,7 @@ sync-from-op:
     #!/usr/bin/env bash
     vars set dev/RPC_URL        "$(op read 'op://dev/rpc/url')"
     vars set dev/PRIVATE_KEY    "$(op read 'op://dev/wallet/private-key')"
-    vars set ETHERSCAN_API_KEY  "$(op read 'op://etherscan/api-key')"
+    vars set SERVER_API_KEY  "$(op read 'op://server/api-key')"
 ```
 
 Run the recipe during onboarding or after a rotation. Keys already present are left untouched (`--skip`); use `--force` to overwrite.
@@ -313,8 +313,18 @@ When a key exists with a different value and neither flag is given, `set` prompt
 | `--dotenv` | — | Output as `KEY=value` |
 | `--fish` | — | Output in fish shell format |
 | `--partial` | — | Skip missing keys instead of erroring |
+| `--origins` | — | Annotate each output line with its source as an inline comment (`# vars`, `# .env`, `# not set`) |
 
 Default output is `export KEY='value'`, which you can pipe into `eval "$(vars resolve)"` in bash/zsh.
+
+`--origins` annotates each line with where the value came from. Useful for auditing or debugging which source won. The comments are eval-safe (shell ignores `#`):
+
+```sh
+$ cat .env | vars resolve --partial --origins
+export DB_URL='postgres://...'  # vars
+export API_TOKEN='xyz'          # .env
+# STRIPE_SECRET  not set
+```
 
 ---
 

@@ -20,6 +20,7 @@ var (
 	resolveFile    string
 	resolvePartial bool
 	resolveProfile string
+	resolveOrigins bool
 )
 
 func init() {
@@ -28,6 +29,7 @@ func init() {
 	resolveCmd.Flags().StringVarP(&resolveFile, "file", "f", ".vars.yaml", "Path to the manifest file")
 	resolveCmd.Flags().BoolVar(&resolvePartial, "partial", false, "Skip missing keys instead of erroring")
 	resolveCmd.Flags().StringVarP(&resolveProfile, "profile", "p", "", "Active profile name")
+	resolveCmd.Flags().BoolVar(&resolveOrigins, "origins", false, "Append source comment to each line (vars, .env, not set)")
 	rootCmd.AddCommand(resolveCmd)
 }
 
@@ -95,6 +97,7 @@ Resolution priority (per key):
 		type entry struct {
 			envName string
 			value   string
+			source  string // "vars" | ".env" | "not set" | "" (pass-through)
 		}
 		var entries []entry
 
@@ -103,11 +106,15 @@ Resolution priority (per key):
 			val, lookupErr := resolveStoreKey(sockPath, v.StoreKey)
 			if lookupErr != nil {
 				if dotval, ok := stdinMap[v.EnvName]; ok {
-					entries = append(entries, entry{v.EnvName, dotval})
+					entries = append(entries, entry{v.EnvName, dotval, ".env"})
 					continue
 				}
 				if resolvePartial {
-					fmt.Fprintf(os.Stderr, "vars: %q not found (skipping)\n", v.StoreKey)
+					if resolveOrigins {
+						entries = append(entries, entry{v.EnvName, "", "not set"})
+					} else {
+						fmt.Fprintf(os.Stderr, "vars: %q not found (skipping)\n", v.StoreKey)
+					}
 					continue
 				}
 				if v.StoreKey == v.EnvName {
@@ -115,18 +122,24 @@ Resolution priority (per key):
 				}
 				return UserError(fmt.Sprintf("key %q not found in store (mapped from %q)", v.StoreKey, v.EnvName))
 			}
-			entries = append(entries, entry{v.EnvName, val})
+			entries = append(entries, entry{v.EnvName, val, "vars"})
 		}
 
 		// Pass through stdin dotenv keys not declared in the manifest
 		for _, e := range stdinEntries {
 			if !manifestKeys[e.Key] {
-				entries = append(entries, entry{e.Key, e.Value})
+				entries = append(entries, entry{e.Key, e.Value, ""})
 			}
 		}
 
 		for _, e := range entries {
-			fmt.Fprintln(os.Stdout, formatter(e.envName, e.value))
+			if e.source == "not set" {
+				fmt.Fprintf(os.Stdout, "# %s  not set\n", e.envName)
+			} else if resolveOrigins && e.source != "" {
+				fmt.Fprintf(os.Stdout, "%s  # %s\n", formatter(e.envName, e.value), e.source)
+			} else {
+				fmt.Fprintln(os.Stdout, formatter(e.envName, e.value))
+			}
 		}
 
 		return nil
