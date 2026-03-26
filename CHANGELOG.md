@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [0.3.0] UNRELEASED
 
 - `vars` with no arguments triggers a first-run setup wizard when no store exists: explains store location, prompts for passphrase, creates the store, starts the agent, and prints next steps
-- Optional config file at `~/.config/vars/config.yaml` (`$XDG_CONFIG_HOME/vars/config.yaml`) — supports `agent_ttl` to set the default agent lifetime (e.g. `4h`, `1d`, `0` for unlimited)
+- `VARS_AGENT_TTL` environment variable sets the default agent lifetime (e.g. `export VARS_AGENT_TTL=4h` in your shell profile); falls back to 8 hours if unset
 - `vars resolve --origins` appends an inline `# vars`, `# .env`, or `# KEY  not set` comment to each output line — eval-safe across all output formats, useful for auditing which source each value came from
 
 ## [0.2.0]

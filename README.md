@@ -28,7 +28,7 @@ sudo mv vars /usr/local/bin/
 
 ## The basics — your personal store
 
-The first command automatically sets up an encrypted store and walks you through choosing a passphrase (optional).
+Run `vars` to get started. If no store exists yet, it walks you through creating one and choosing a passphrase (optional).
 
 Store values:
 
@@ -340,10 +340,10 @@ vars agent --ttl 0     # never expire
 vars agent stop        # wipe memory and exit immediately
 ```
 
-To set a persistent default, create `~/.config/vars/config.yaml`:
+To set a persistent default, add `VARS_AGENT_TTL` to your shell profile:
 
-```yaml
-agent_ttl: 4h   # e.g. 30m, 4h, 12h, 1d, 0 for unlimited
+```sh
+export VARS_AGENT_TTL=4h   # e.g. 30m, 4h, 12h, 1d, 0 for unlimited
 ```
 
 The agent communicates over a Unix domain socket. It never writes decrypted data to disk.

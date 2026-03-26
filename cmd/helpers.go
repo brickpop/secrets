@@ -10,7 +10,17 @@ import (
 	"github.com/vars-cli/vars/internal/prompt"
 	"github.com/vars-cli/vars/internal/store"
 )
-
+// defaultTTL returns the default agent lifetime in seconds.
+// Reads VARS_AGENT_TTL if set (e.g. "4h", "30m", "1d", "0" for unlimited),
+// falls back to 8 hours.
+func defaultTTL() int64 {
+	if s := os.Getenv("VARS_AGENT_TTL"); s != "" {
+		if ttl, err := parseTTLSeconds(s); err == nil {
+			return ttl
+		}
+	}
+	return 8 * 60 * 60
+}
 
 // stdinPrompt is a lazily-initialized Prompter backed by os.Stdin.
 // All code must use this instead of prompt.New(os.Stdin, ...) to avoid
