@@ -117,7 +117,7 @@ func startAgent(ttl int64) (string, error) {
 	// Plaintext is zeroed immediately — the daemon decrypts the store independently.
 	var passphrase string
 	if _, ok := agebackend.TrialDecryptEmpty(ciphertext); !ok {
-		pass, err := stdinPrompter().Passphrase("Passphrase: ")
+		pass, err := stdinPrompter().Passphrase("Store passphrase: ")
 		if err != nil {
 			return "", UserError(err.Error())
 		}

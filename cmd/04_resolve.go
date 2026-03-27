@@ -20,7 +20,7 @@ var (
 	resolveFile    string
 	resolvePartial bool
 	resolveProfile string
-	resolveOrigins bool
+	resolveOrigin  bool
 )
 
 func init() {
@@ -29,7 +29,7 @@ func init() {
 	resolveCmd.Flags().StringVarP(&resolveFile, "file", "f", ".vars.yaml", "Path to the manifest file")
 	resolveCmd.Flags().BoolVar(&resolvePartial, "partial", false, "Skip missing keys instead of erroring")
 	resolveCmd.Flags().StringVarP(&resolveProfile, "profile", "p", "", "Active profile name")
-	resolveCmd.Flags().BoolVar(&resolveOrigins, "origins", false, "Append source comment to each line (vars, .env, not set)")
+	resolveCmd.Flags().BoolVar(&resolveOrigin, "origin", false, "Append source comment to each line (vars, .env, not set)")
 	rootCmd.AddCommand(resolveCmd)
 }
 
@@ -129,7 +129,7 @@ Resolution priority (per key):
 					continue
 				}
 				if resolvePartial {
-					if resolveOrigins {
+					if resolveOrigin {
 						entries = append(entries, entry{v.EnvName, "", "not set"})
 					} else {
 						fmt.Fprintf(os.Stderr, "vars: %q not found (skipping)\n", v.StoreKey)
@@ -154,7 +154,7 @@ Resolution priority (per key):
 		for _, e := range entries {
 			if e.source == "not set" {
 				fmt.Fprintf(os.Stdout, "# %s  not set\n", e.envName)
-			} else if resolveOrigins && e.source != "" {
+			} else if resolveOrigin && e.source != "" {
 				fmt.Fprintf(os.Stdout, "%s  # %s\n", formatter(e.envName, e.value), e.source)
 			} else {
 				fmt.Fprintln(os.Stdout, formatter(e.envName, e.value))

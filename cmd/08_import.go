@@ -170,7 +170,7 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 
 			var setErr error
 			if hasOverwrite {
-				setErr = withPassphrase("Enter passphrase to confirm overwrite: ", func(passphrase string) error {
+				setErr = withPassphrase("Store passphrase to confirm: ", func(passphrase string) error {
 					return agent.Set(sockPath, items, passphrase)
 				})
 			} else {

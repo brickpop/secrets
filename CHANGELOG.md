@@ -4,12 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.3.0] UNRELEASED
+## [0.3.0]
 
 - `vars` with no arguments triggers a first-run setup wizard when no store exists: explains store location, prompts for passphrase, creates the store, starts the agent, and prints next steps
 - `VARS_AGENT_TTL` environment variable sets the default agent lifetime (e.g. `export VARS_AGENT_TTL=4h` in your shell profile); falls back to 8 hours if unset
-- `vars resolve --origins` appends an inline `# vars`, `# stdin`, or `# KEY  not set` comment to each output line — eval-safe across all output formats, useful for auditing which source each value came from
+- `vars resolve --origin` appends an inline `# vars`, `# stdin`, or `# KEY  not set` comment to each output line — eval-safe across all output formats, useful for auditing which source each value came from
+- `vars resolve -p <profile>` warns on stderr when the named profile does not exist in the manifest
 - Profile entries starting with `=` resolve to inline literal values instead of store keys (e.g. `LOG_LEVEL: =info`)
+- `vars resolve` with stdin piped now exits with an error if the agent is not running, rather than consuming stdin through the passphrase prompt
+- All user-facing error messages are now prefixed with `vars:` for clarity when the tool is embedded in scripts or pipelines
 
 ## [0.2.0]
 
