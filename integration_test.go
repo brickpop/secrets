@@ -393,6 +393,26 @@ func TestIntegration_ResolveStdinDotenv(t *testing.T) {
 	}
 }
 
+func TestIntegration_ResolveStdin_AgentNotRunning(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.writeFile(".vars.yaml", `keys:
+  - FOO
+`)
+
+	// Stop the agent so it is definitely not running
+	r.mustRun("agent", "stop")
+
+	_, stderr, err := r.runWithStdin("FOO=bar\n", "resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--partial")
+	if err == nil {
+		t.Fatal("expected error when agent is not running and stdin is piped")
+	}
+	if !strings.Contains(stderr, "agent is not running") {
+		t.Fatalf("expected 'agent is not running' error, got stderr: %s", stderr)
+	}
+}
+
 func TestIntegration_DumpAllFormats(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()

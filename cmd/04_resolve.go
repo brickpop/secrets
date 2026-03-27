@@ -71,19 +71,31 @@ Resolution priority (per key):
 			fmt.Fprintf(os.Stderr, "vars: warning: profile %q not found in manifest\n", resolveProfile)
 		}
 
+		sockPath := agentSocketPath()
+
+		// Check stdin pipe before touching the agent — if stdin is piped, we
+		// cannot prompt interactively, so fail fast if the agent isn't already up.
+		stdinPiped := func() bool {
+			fi, err := os.Stdin.Stat()
+			return err == nil && fi.Mode()&os.ModeCharDevice == 0
+		}()
+
+		if stdinPiped && !agent.IsRunning(sockPath) {
+			return UserError("agent is not running; start it first with `vars agent`")
+		}
+
 		if err := ensureAgent(); err != nil {
 			return err
 		}
 
-		sockPath := agentSocketPath()
-
 		// Parse stdin dotenv if piped
 		var stdinEntries []envfile.Entry
 		var stdinMap map[string]string
-		if fi, err := os.Stdin.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 {
-			stdinEntries, err = envfile.Parse(os.Stdin)
-			if err != nil {
-				return UserError("failed to parse stdin as dotenv: " + err.Error())
+		if stdinPiped {
+			var parseErr error
+			stdinEntries, parseErr = envfile.Parse(os.Stdin)
+			if parseErr != nil {
+				return UserError("failed to parse stdin as dotenv: " + parseErr.Error())
 			}
 			stdinMap = make(map[string]string, len(stdinEntries))
 			for _, e := range stdinEntries {

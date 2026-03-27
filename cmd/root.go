@@ -63,7 +63,7 @@ type ExitError struct {
 }
 
 func (e *ExitError) Error() string {
-	return e.Message
+	return "vars: " + e.Message
 }
 
 // UserError returns an ExitError with exit code 1 (user error).
