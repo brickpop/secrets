@@ -16,11 +16,11 @@ Safe Vars loads env vars into your session. What you do with them is up to you.
 
 ```sh
 # macOS (Apple Silicon)
-curl -L https://github.com/vars-cli/vars/releases/download/v0.1.0/vars_0.1.0_darwin_arm64.tar.gz | tar xz
+curl -L https://github.com/vars-cli/vars/releases/download/v0.3.0/vars_0.3.0_darwin_arm64.tar.gz | tar xz
 sudo mv vars /usr/local/bin/
 
 # Linux / WSL (amd64)
-curl -L https://github.com/vars-cli/vars/releases/download/v0.1.0/vars_0.1.0_linux_amd64.tar.gz | tar xz
+curl -L https://github.com/vars-cli/vars/releases/download/v0.3.0/vars_0.3.0_linux_amd64.tar.gz | tar xz
 sudo mv vars /usr/local/bin/
 ```
 
