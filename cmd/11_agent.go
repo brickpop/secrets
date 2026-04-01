@@ -17,10 +17,14 @@ import (
 	"github.com/vars-cli/vars/internal/store"
 )
 
-var agentTTL string
+var (
+	agentTTL   string
+	agentStdin bool
+)
 
 func init() {
 	agentCmd.Flags().StringVar(&agentTTL, "ttl", "8h", "Agent lifetime (e.g. 30m, 5h, 10d, 0 for unlimited)")
+	agentCmd.Flags().BoolVar(&agentStdin, "stdin", false, "Read passphrase from stdin (for non-interactive use)")
 	agentCmd.AddCommand(agentStopCmd)
 	rootCmd.AddCommand(agentCmd)
 }
@@ -61,8 +65,19 @@ to set an explicit TTL, or to update the TTL of a running agent.`,
 			return UserError(fmt.Sprintf("invalid TTL: %v", err))
 		}
 
-		if _, err := startAgent(ttl); err != nil {
-			return err
+		if agentStdin {
+			data, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				return UserError(fmt.Sprintf("reading passphrase from stdin: %v", err))
+			}
+			passphrase := strings.TrimRight(string(data), "\r\n")
+			if _, err := startAgentWithPassphrase(passphrase, ttl); err != nil {
+				return err
+			}
+		} else {
+			if _, err := startAgent(ttl); err != nil {
+				return err
+			}
 		}
 
 		fmt.Fprintln(os.Stderr, "vars: agent started")
@@ -129,6 +144,36 @@ func startAgent(ttl int64) (string, error) {
 			plaintext[i] = 0
 		}
 		passphrase = pass
+	}
+
+	return launchDaemon(passphrase, ttl)
+}
+
+// startAgentWithPassphrase is like startAgent but uses a pre-supplied passphrase
+// instead of prompting. Used by `vars agent --stdin`. Requires the store to exist.
+func startAgentWithPassphrase(passphrase string, ttl int64) (string, error) {
+	if !store.Exists() {
+		return "", UserError("no store found; run `vars` to create one first")
+	}
+
+	ciphertext, err := os.ReadFile(store.FilePath())
+	if err != nil {
+		return "", InternalError(fmt.Sprintf("reading store: %v", err))
+	}
+
+	for _, w := range store.CheckPermissions() {
+		fmt.Fprintf(os.Stderr, "vars: %s\n", w)
+	}
+
+	// Validate passphrase only if the store is passphrase-protected.
+	if _, ok := agebackend.TrialDecryptEmpty(ciphertext); !ok {
+		plaintext, err := agebackend.New(passphrase).Decrypt(ciphertext)
+		if err != nil {
+			return "", UserError("incorrect passphrase")
+		}
+		for i := range plaintext {
+			plaintext[i] = 0
+		}
 	}
 
 	return launchDaemon(passphrase, ttl)

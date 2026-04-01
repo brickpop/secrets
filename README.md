@@ -121,11 +121,11 @@ profiles:
 ```
 
 ```sh
-vars resolve              # uses the "default" profile automatically
+vars resolve              # uses the "default" profile if present
 vars resolve -p mainnet   # mappings from the mainnet profile
 ```
 
-`PRIVATE_KEY` will resolve to either `sepolia/PRIVATE_KEY` (by default) or to `prod/PRIVATE_KEY` when `-p mainnet` is passed. 
+`PRIVATE_KEY` will resolve to either `dev/PRIVATE_KEY` (by default) or to `prod/PRIVATE_KEY` when `-p mainnet` is passed. 
 
 Profiles are opt-in. Any keys (`SERVER_API_KEY`) not listed in a profile continue to work as usual.
 
@@ -137,44 +137,50 @@ When resolving a key, `resolve` searches from most specific to least — strippi
 
 This means that your profile can reference a specific scoped key even if you've only stored the base key. Teams can share a common `RPC_URL` while individuals or environments override it at any specificity level, without changing the manifest.
 
-### Team-wide key aliases
+### Team-wide mappings
 
-Use `mappings:` to rename store keys for everyone on the team, regardless of the profile:
-
-```yaml
-mappings:
-  SERVER_API_KEY: SERVER_API_KEY_v2    # applies to all profiles
-```
-
-### Inline literals
-
-Profile entries starting with `=` emit a literal value rather than looking up a store key:
+Use the reserved `global:` profile to apply default mappings for everyone, regardless of the active profile:
 
 ```yaml
 profiles:
-  ci:
-    LOG_LEVEL: =info
-    DRY_RUN: =true
+  global:
+    SERVER_API_KEY: SERVER_API_KEY_v2    # applies to all profiles
 ```
 
-Useful for environment flags and non-secret values that vary by profile but don't belong in the store.
+### Inline literals and defaults
+
+Profile mappings support two special prefixes:
+
+| Syntax | Behaviour |
+|--------|-----------|
+| `= value` | Emit this literal value — no store lookup |
+| `?= value` | Use store value if present and non-empty; otherwise emit the default |
+
+```yaml
+profiles:
+  global:
+    LOG_LEVEL: = info                    # emits "info", no store lookup
+    RPC_URL: ?= http://localhost:8545    # store wins; falls back to localhost if missing
+  ci:
+    DRY_RUN: = true
+    API_URL: ?= "http://localhost:8080"  # quotes stripped → http://localhost
+```
 
 ---
 
-## Personal overrides
+## Local overrides
 
-Profiles and mappings in `.vars.yaml` are committed — they are the team's shared convention. But you may have personal variations: a wallet key, a different URL, a local backup.
+Profiles in `.vars.yaml` are committed — they are the team's shared convention. But you may have personal variations: a wallet key, a different URL, a local backup.
 
 Add `.vars.local.yaml` (git-ignored, never commit it) alongside `.vars.yaml`:
 
 ```yaml
 # .vars.local.yaml
-mappings:
-  PRIVATE_KEY: prod/PRIVATE_KEY_alice_hw    # override for all profiles
-
 profiles:
+  global:
+    PRIVATE_KEY: prod/PRIVATE_KEY_alice_hw    # override for all profiles
   mainnet:
-    RPC_URL: prod/RPC_URL_quicknode         # only override this one key in mainnet
+    RPC_URL: prod/RPC_URL_quicknode           # only override this one key in mainnet
 ```
 
 Local overrides take priority over `.vars.yaml`, per key. Everyone has the same manifest; only personal overrides differ.
@@ -280,6 +286,7 @@ vars get RPC_URL~2
 
 | Command | Description |
 |---------|-------------|
+| `vars init` | Scaffold a `.vars.yaml` manifest in the current directory |
 | `vars set <key> [value]` | Add or update a secret |
 | `vars get <key>` | Print a secret to stdout |
 | `vars resolve` | Resolve project variables and print as shell exports |
@@ -293,6 +300,7 @@ vars get RPC_URL~2
 | `vars dump` | Dump all variables (debugging / migration) |
 | `vars passwd` | Change the store passphrase |
 | `vars agent [--ttl N]` | Adjust the agent lifetime |
+| `vars agent --stdin` | Start the agent with passphrase read from stdin (non-interactive) |
 | `vars agent stop` | Wipe memory and stop the agent |
 
 ### `rm` flags
@@ -323,10 +331,10 @@ When a key exists with a different value and neither flag is given, `set` prompt
 |------|---------|-------------|
 | `-f`, `--file` | `.vars.yaml` | Path to manifest file |
 | `-p`, `--profile` | — | Active profile (auto-applies `default` if present) |
-| `--dotenv` | — | Output as `KEY=value` |
+| `--dotenv` | — | Output as bare `KEY=value` |
 | `--fish` | — | Output in fish shell format |
 | `--partial` | — | Skip missing keys instead of erroring |
-| `--origin` | — | Annotate each output line with its source as an inline comment (`# vars`, `# stdin`, `# not set`) |
+| `--origin` | — | Annotate each output line with its source as an inline comment |
 
 Default output is `export KEY='value'`, which you can pipe into `eval "$(vars resolve)"` in bash/zsh.
 
@@ -335,9 +343,20 @@ Default output is `export KEY='value'`, which you can pipe into `eval "$(vars re
 ```sh
 $ cat .env | vars resolve --partial --origin
 export DB_URL='postgres://...'  # vars
-export API_TOKEN='xyz'          # stdin
+export API_TOKEN='xyz'          # .env
+export LOG_LEVEL='info'         # manifest
+export RPC_URL='http://...'     # manifest
+# PRIVATE_KEY  shell
 # STRIPE_SECRET  not set
 ```
+
+| Origin | Meaning |
+|--------|---------|
+| `vars` | Value from the encrypted store |
+| `.env` | Value from piped stdin dotenv file |
+| `manifest` | Value from manifest (`= literal` or `?= default` fallback) |
+| `shell` | Already set in the calling shell — no export emitted |
+| `not set` | Not found anywhere (only with `--partial`) |
 
 ---
 
@@ -351,6 +370,15 @@ You only need to interact with it directly if you want to change the lifetime:
 vars agent --ttl 4h    # restart with a shorter lifetime
 vars agent --ttl 0     # never expire
 vars agent stop        # wipe memory and exit immediately
+```
+
+In non-interactive environments (CI, scripts) where stdin is occupied by a piped dotenv file, start the agent first with the passphrase via stdin:
+
+```sh
+# Unlock the agent
+echo "$STORE_PASSPHRASE" | vars agent --stdin
+# Use the store
+vars resolve --dotenv
 ```
 
 To set a persistent default, add `VARS_AGENT_TTL` to your shell profile:

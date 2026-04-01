@@ -116,6 +116,20 @@ func (r *runner) runWithStdin(stdin string, args ...string) (string, string, err
 	return stdout.String(), stderr.String(), err
 }
 
+func (r *runner) mustRunWithEnv(extraEnv []string, args ...string) string {
+	r.t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Dir = r.workDir
+	cmd.Env = append(r.env, extraEnv...)
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		r.t.Fatalf("vars %s failed: %v\nstdout: %s\nstderr: %s", strings.Join(args, " "), err, stdout.String(), stderr.String())
+	}
+	return stdout.String()
+}
+
 func (r *runner) mustRunWithStdin(stdin string, args ...string) string {
 	r.t.Helper()
 	stdout, stderr, err := r.runWithStdin(stdin, args...)
@@ -320,8 +334,9 @@ func TestIntegration_ResolveLocalMappings(t *testing.T) {
 	r.writeFile(".vars.yaml", `keys:
   - PROJECT_PK
 `)
-	r.writeFile(".vars.local.yaml", `mappings:
-  PROJECT_PK: PRIVATE_KEY
+	r.writeFile(".vars.local.yaml", `profiles:
+  global:
+    PROJECT_PK: PRIVATE_KEY
 `)
 
 	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"))
@@ -587,16 +602,17 @@ func TestIntegration_ResolveCommittedMappings(t *testing.T) {
 
 	r.writeFile(".vars.yaml", `keys:
   - LOCAL_TOKEN
-mappings:
-  LOCAL_TOKEN: GLOBAL_TOKEN
+profiles:
+  global:
+    LOCAL_TOKEN: GLOBAL_TOKEN
 `)
 
 	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"))
 	if !strings.Contains(out, "LOCAL_TOKEN") {
-		t.Fatalf("committed mappings missing LOCAL_TOKEN: %s", out)
+		t.Fatalf("global profile missing LOCAL_TOKEN: %s", out)
 	}
 	if !strings.Contains(out, "tok123") {
-		t.Fatalf("committed mappings has wrong value: %s", out)
+		t.Fatalf("global profile has wrong value: %s", out)
 	}
 }
 
@@ -1100,5 +1116,133 @@ func TestIntegration_History_EmptyForNewKey(t *testing.T) {
 	out := r.mustRun("history", "KEY")
 	if strings.TrimSpace(out) != "" {
 		t.Fatalf("new key should have no history, got: %s", out)
+	}
+}
+
+func TestIntegration_Resolve_Origin_Literal(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.writeFile(".vars.yaml", `keys:
+  - LOG_LEVEL
+  - API_KEY
+profiles:
+  global:
+    LOG_LEVEL: = info
+`)
+	r.mustRun("set", "API_KEY", "secret")
+
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--origin")
+	if !strings.Contains(out, "# manifest") {
+		t.Fatalf("expected '# manifest' annotation for =info, got: %s", out)
+	}
+	if !strings.Contains(out, "# vars") {
+		t.Fatalf("expected '# vars' annotation for API_KEY, got: %s", out)
+	}
+}
+
+func TestIntegration_Resolve_Origin_Default_Used(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.writeFile(".vars.yaml", `keys:
+  - RPC_URL
+profiles:
+  global:
+    RPC_URL: ?= http://localhost:8545
+`)
+	// RPC_URL is NOT in the store → default should be used
+
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--origin")
+	if !strings.Contains(out, "# manifest") {
+		t.Fatalf("expected '# manifest' annotation when store key missing, got: %s", out)
+	}
+	if !strings.Contains(out, "http://localhost:8545") {
+		t.Fatalf("expected default value in output, got: %s", out)
+	}
+}
+
+func TestIntegration_Resolve_Origin_Default_StoreWins(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "RPC_URL", "https://real.rpc")
+	r.writeFile(".vars.yaml", `keys:
+  - RPC_URL
+profiles:
+  global:
+    RPC_URL: ?= http://localhost:8545
+`)
+
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--origin")
+	if !strings.Contains(out, "https://real.rpc") {
+		t.Fatalf("store value should take precedence over default, got: %s", out)
+	}
+	if !strings.Contains(out, "# vars") {
+		t.Fatalf("expected '# vars' annotation when store value used, got: %s", out)
+	}
+	if strings.Contains(out, "# manifest") {
+		t.Fatalf("should not show '# manifest' when store value found, got: %s", out)
+	}
+}
+
+func TestIntegration_Resolve_Default_EmptyStoreTriggersFallback(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "RPC_URL", "")
+	r.writeFile(".vars.yaml", `keys:
+  - RPC_URL
+profiles:
+  global:
+    RPC_URL: ?= http://localhost:8545
+`)
+
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--origin")
+	if !strings.Contains(out, "http://localhost:8545") {
+		t.Fatalf("empty store value should trigger default, got: %s", out)
+	}
+	if !strings.Contains(out, "# manifest") {
+		t.Fatalf("expected '# manifest' annotation for empty store value, got: %s", out)
+	}
+}
+
+func TestIntegration_Resolve_ShellEnvFallback(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	// RPC_URL not in store; present in shell env
+	r.writeFile(".vars.yaml", `keys:
+  - RPC_URL
+  - API_KEY
+`)
+	r.mustRun("set", "API_KEY", "secret")
+
+	out := r.mustRunWithEnv([]string{"RPC_URL=http://from-shell"}, "resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"))
+	// RPC_URL already in shell: no export line emitted
+	if strings.Contains(out, "RPC_URL") {
+		t.Fatalf("shell env key should not be emitted in output, got: %s", out)
+	}
+	// API_KEY from store is still emitted
+	if !strings.Contains(out, "secret") {
+		t.Fatalf("store key should still be emitted, got: %s", out)
+	}
+}
+
+func TestIntegration_Resolve_ShellEnvFallback_Origin(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.writeFile(".vars.yaml", `keys:
+  - RPC_URL
+`)
+
+	out := r.mustRunWithEnv([]string{"RPC_URL=http://from-shell"}, "resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--origin")
+	if !strings.Contains(out, "# RPC_URL  shell") {
+		t.Fatalf("expected '# RPC_URL  shell' comment, got: %s", out)
+	}
+	// The actual value must not be emitted
+	if strings.Contains(out, "http://from-shell") {
+		t.Fatalf("shell value must not appear in output, got: %s", out)
 	}
 }

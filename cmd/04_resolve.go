@@ -50,9 +50,15 @@ Store values always take priority over stdin values.
 Resolution priority (per key):
   1. Active profile from .vars.local.yaml (personal override)
   2. Active profile from .vars.yaml
-  3. mappings: from .vars.local.yaml
-  4. mappings: from .vars.yaml
-  5. Bare key (identity)`,
+  3. global: profile from .vars.local.yaml
+  4. global: profile from .vars.yaml
+  5. Bare key (identity)
+
+Mapping values may use special prefixes:
+  = value     emit literal value, no store lookup  (origin: manifest)
+  ?= value    use store value; fall back to default (origin: manifest when default used)
+
+--origin sources: vars | .env | manifest | shell | not set`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		formatter := format.Posix
@@ -112,20 +118,28 @@ Resolution priority (per key):
 		type entry struct {
 			envName string
 			value   string
-			source  string // "vars" | ".env" | "not set" | "" (pass-through)
+			source  string // "vars" | ".env" | "manifest" | "shell" | "not set" | "" (pass-through)
 		}
 		var entries []entry
 
-		// Resolve manifest keys: inline literals, then store, then stdin dotenv as fallback
+		// Resolve manifest keys: inline literals, then store, then .env/env fallbacks
 		for _, v := range vars {
 			if v.IsInline {
-				entries = append(entries, entry{v.EnvName, v.InlineValue, "inline"})
+				entries = append(entries, entry{v.EnvName, v.InlineValue, "manifest"})
 				continue
 			}
 			val, lookupErr := resolveStoreKey(sockPath, v.StoreKey)
+			if v.HasDefault && (lookupErr != nil || val == "") {
+				entries = append(entries, entry{v.EnvName, v.DefaultValue, "manifest"})
+				continue
+			}
 			if lookupErr != nil {
 				if dotval, ok := stdinMap[v.EnvName]; ok {
-					entries = append(entries, entry{v.EnvName, dotval, "stdin"})
+					entries = append(entries, entry{v.EnvName, dotval, ".env"})
+					continue
+				}
+				if envval := os.Getenv(v.EnvName); envval != "" {
+					entries = append(entries, entry{v.EnvName, envval, "shell"})
 					continue
 				}
 				if resolvePartial {
@@ -152,12 +166,20 @@ Resolution priority (per key):
 		}
 
 		for _, e := range entries {
-			if e.source == "not set" {
+			switch e.source {
+			case "not set":
 				fmt.Fprintf(os.Stdout, "# %s  not set\n", e.envName)
-			} else if resolveOrigin && e.source != "" {
-				fmt.Fprintf(os.Stdout, "%s  # %s\n", formatter(e.envName, e.value), e.source)
-			} else {
-				fmt.Fprintln(os.Stdout, formatter(e.envName, e.value))
+			case "shell":
+				// Value already present in the calling shell — no export needed.
+				if resolveOrigin {
+					fmt.Fprintf(os.Stdout, "# %s  shell\n", e.envName)
+				}
+			default:
+				if resolveOrigin && e.source != "" {
+					fmt.Fprintf(os.Stdout, "%s  # %s\n", formatter(e.envName, e.value), e.source)
+				} else {
+					fmt.Fprintln(os.Stdout, formatter(e.envName, e.value))
+				}
 			}
 		}
 

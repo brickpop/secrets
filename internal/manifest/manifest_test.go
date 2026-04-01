@@ -25,9 +25,9 @@ keys:
   - PRIVATE_KEY
   - RPC_URL
   - ETHERSCAN_API
-mappings:
-  PRIVATE_KEY: prod/PRIVATE_KEY
 profiles:
+  global:
+    PRIVATE_KEY: prod/PRIVATE_KEY
   mainnet:
     RPC_URL: prod/RPC_URL
   sepolia:
@@ -41,8 +41,8 @@ profiles:
 	if len(m.Keys) != 3 {
 		t.Fatalf("Keys len = %d, want 3", len(m.Keys))
 	}
-	if m.Mappings["PRIVATE_KEY"] != "prod/PRIVATE_KEY" {
-		t.Fatalf("Mappings[PRIVATE_KEY] = %q", m.Mappings["PRIVATE_KEY"])
+	if m.Profiles["global"]["PRIVATE_KEY"] != "prod/PRIVATE_KEY" {
+		t.Fatalf("Profiles[global][PRIVATE_KEY] = %q", m.Profiles["global"]["PRIVATE_KEY"])
 	}
 	if m.Profiles["mainnet"]["RPC_URL"] != "prod/RPC_URL" {
 		t.Fatalf("Profiles[mainnet][RPC_URL] = %q", m.Profiles["mainnet"]["RPC_URL"])
@@ -66,9 +66,6 @@ keys:
 	}
 	if len(m.Keys) != 2 {
 		t.Fatalf("Keys len = %d, want 2", len(m.Keys))
-	}
-	if len(m.Mappings) != 0 {
-		t.Fatalf("Mappings should be empty, got %v", m.Mappings)
 	}
 	if len(m.Profiles) != 0 {
 		t.Fatalf("Profiles should be empty, got %v", m.Profiles)
@@ -157,9 +154,9 @@ another: 42
 func TestLoadLocal_Valid(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, ".vars.local.yaml", `
-mappings:
-  PRIVATE_KEY: prod/PRIVATE_KEY_alice
 profiles:
+  global:
+    PRIVATE_KEY: prod/PRIVATE_KEY_alice
   mainnet:
     RPC_URL: prod/RPC_URL_quicknode
 `)
@@ -168,8 +165,8 @@ profiles:
 	if err != nil {
 		t.Fatalf("LoadLocal: %v", err)
 	}
-	if local.Mappings["PRIVATE_KEY"] != "prod/PRIVATE_KEY_alice" {
-		t.Fatalf("Mappings[PRIVATE_KEY] = %q", local.Mappings["PRIVATE_KEY"])
+	if local.Profiles["global"]["PRIVATE_KEY"] != "prod/PRIVATE_KEY_alice" {
+		t.Fatalf("Profiles[global][PRIVATE_KEY] = %q", local.Profiles["global"]["PRIVATE_KEY"])
 	}
 	if local.Profiles["mainnet"]["RPC_URL"] != "prod/RPC_URL_quicknode" {
 		t.Fatalf("Profiles[mainnet][RPC_URL] = %q", local.Profiles["mainnet"]["RPC_URL"])
@@ -181,7 +178,7 @@ func TestLoadLocal_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLocal nonexistent should not error: %v", err)
 	}
-	if local.Mappings != nil || local.Profiles != nil {
+	if local.Profiles != nil {
 		t.Fatalf("LoadLocal nonexistent should return empty, got %+v", local)
 	}
 }
@@ -198,7 +195,7 @@ func TestLoadLocal_InvalidYAML(t *testing.T) {
 
 // --- Resolve ---
 
-func TestResolve_NoMappings(t *testing.T) {
+func TestResolve_NoProfiles(t *testing.T) {
 	dir := t.TempDir()
 	manifestPath := writeFile(t, dir, ".vars.yaml", `
 keys:
@@ -215,21 +212,22 @@ keys:
 	}
 	for _, v := range vars {
 		if v.EnvName != v.StoreKey {
-			t.Fatalf("without mappings, EnvName %q should equal StoreKey %q", v.EnvName, v.StoreKey)
+			t.Fatalf("without profiles, EnvName %q should equal StoreKey %q", v.EnvName, v.StoreKey)
 		}
 	}
 }
 
-func TestResolve_CommittedMappings(t *testing.T) {
+func TestResolve_GlobalProfile(t *testing.T) {
 	dir := t.TempDir()
 	manifestPath := writeFile(t, dir, ".vars.yaml", `
 keys:
   - FOO
   - BAR
   - BAZ
-mappings:
-  FOO: FOO_remapped
-  BAZ: BAZ_personal
+profiles:
+  global:
+    FOO: FOO_remapped
+    BAZ: BAZ_personal
 `)
 
 	vars, _, err := Resolve(manifestPath, filepath.Join(dir, ".vars.local.yaml"), "")
@@ -238,7 +236,7 @@ mappings:
 	}
 	expected := map[string]string{
 		"FOO": "FOO_remapped",
-		"BAR": "BAR",          // not in mappings → identity
+		"BAR": "BAR",          // not in global → identity
 		"BAZ": "BAZ_personal",
 	}
 	for _, v := range vars {
@@ -249,17 +247,19 @@ mappings:
 	}
 }
 
-func TestResolve_LocalMappingsOverride(t *testing.T) {
+func TestResolve_LocalGlobalOverride(t *testing.T) {
 	dir := t.TempDir()
 	manifestPath := writeFile(t, dir, ".vars.yaml", `
 keys:
   - FOO
-mappings:
-  FOO: FOO_team
+profiles:
+  global:
+    FOO: FOO_team
 `)
 	localPath := writeFile(t, dir, ".vars.local.yaml", `
-mappings:
-  FOO: FOO_alice
+profiles:
+  global:
+    FOO: FOO_alice
 `)
 
 	vars, _, err := Resolve(manifestPath, localPath, "")
@@ -267,7 +267,7 @@ mappings:
 		t.Fatalf("Resolve: %v", err)
 	}
 	if vars[0].StoreKey != "FOO_alice" {
-		t.Fatalf("local mapping should override committed: got %q", vars[0].StoreKey)
+		t.Fatalf("local global should override committed global: got %q", vars[0].StoreKey)
 	}
 }
 
@@ -329,15 +329,15 @@ profiles:
 	}
 }
 
-func TestResolve_ProfileFallbackToMappings(t *testing.T) {
+func TestResolve_ProfileFallbackToGlobal(t *testing.T) {
 	dir := t.TempDir()
 	manifestPath := writeFile(t, dir, ".vars.yaml", `
 keys:
   - PRIVATE_KEY
   - ETHERSCAN_API
-mappings:
-  ETHERSCAN_API: ETHERSCAN_API_v2
 profiles:
+  global:
+    ETHERSCAN_API: ETHERSCAN_API_v2
   mainnet:
     PRIVATE_KEY: prod/PRIVATE_KEY
 `)
@@ -348,8 +348,8 @@ profiles:
 	}
 
 	expected := map[string]string{
-		"PRIVATE_KEY":   "prod/PRIVATE_KEY",   // from profile
-		"ETHERSCAN_API": "ETHERSCAN_API_v2",   // not in profile → falls back to mappings
+		"PRIVATE_KEY":   "prod/PRIVATE_KEY",
+		"ETHERSCAN_API": "ETHERSCAN_API_v2", // not in profile → falls back to global
 	}
 	for _, v := range vars {
 		want := expected[v.EnvName]
@@ -387,7 +387,6 @@ keys:
   - FOO
 `)
 
-	// Unknown profile → no profile matches → identity, profileFound=false
 	vars, profileFound, err := Resolve(manifestPath, filepath.Join(dir, ".vars.local.yaml"), "nonexistent")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -397,6 +396,22 @@ keys:
 	}
 	if vars[0].StoreKey != "FOO" {
 		t.Fatalf("unknown profile should fall through to identity: got %q", vars[0].StoreKey)
+	}
+}
+
+func TestResolve_GlobalProfileReserved(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := writeFile(t, dir, ".vars.yaml", `
+keys:
+  - FOO
+`)
+
+	_, _, err := Resolve(manifestPath, filepath.Join(dir, ".vars.local.yaml"), "global")
+	if err == nil {
+		t.Fatal("selecting global profile should error")
+	}
+	if !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("expected reserved error, got: %v", err)
 	}
 }
 
@@ -448,7 +463,7 @@ keys:
   - API_KEY
 profiles:
   ci:
-    LOG_LEVEL: =info
+    LOG_LEVEL: = info
     API_KEY: ci/API_KEY
 `)
 
@@ -495,5 +510,121 @@ profiles:
 	}
 	if vars[0].InlineValue != "" {
 		t.Fatalf("InlineValue = %q, want \"\"", vars[0].InlineValue)
+	}
+}
+
+func TestResolve_InlineLiteralInGlobal(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := writeFile(t, dir, ".vars.yaml", `
+keys:
+  - LOG_LEVEL
+  - API_KEY
+profiles:
+  global:
+    LOG_LEVEL: = info
+`)
+
+	vars, _, err := Resolve(manifestPath, filepath.Join(dir, ".vars.local.yaml"), "")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	for _, v := range vars {
+		switch v.EnvName {
+		case "LOG_LEVEL":
+			if !v.IsInline {
+				t.Fatal("LOG_LEVEL should be inline")
+			}
+			if v.InlineValue != "info" {
+				t.Fatalf("InlineValue = %q, want \"info\"", v.InlineValue)
+			}
+		case "API_KEY":
+			if v.IsInline {
+				t.Fatal("API_KEY should not be inline")
+			}
+			if v.StoreKey != "API_KEY" {
+				t.Fatalf("StoreKey = %q, want \"API_KEY\"", v.StoreKey)
+			}
+		}
+	}
+}
+
+func TestResolve_DefaultValue(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := writeFile(t, dir, ".vars.yaml", `
+keys:
+  - RPC_URL
+  - API_KEY
+profiles:
+  global:
+    RPC_URL: ?= http://localhost:8545
+`)
+
+	vars, _, err := Resolve(manifestPath, filepath.Join(dir, ".vars.local.yaml"), "")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	for _, v := range vars {
+		switch v.EnvName {
+		case "RPC_URL":
+			if !v.HasDefault {
+				t.Fatal("RPC_URL should have HasDefault=true")
+			}
+			if v.DefaultValue != "http://localhost:8545" {
+				t.Fatalf("DefaultValue = %q, want %q", v.DefaultValue, "http://localhost:8545")
+			}
+			if v.StoreKey != "RPC_URL" {
+				t.Fatalf("StoreKey = %q, want %q", v.StoreKey, "RPC_URL")
+			}
+		case "API_KEY":
+			if v.HasDefault {
+				t.Fatal("API_KEY should not have HasDefault")
+			}
+		}
+	}
+}
+
+func TestResolve_DefaultValueInProfile(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := writeFile(t, dir, ".vars.yaml", `
+keys:
+  - DRY_RUN
+profiles:
+  ci:
+    DRY_RUN: ?= false
+`)
+
+	vars, _, err := Resolve(manifestPath, filepath.Join(dir, ".vars.local.yaml"), "ci")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !vars[0].HasDefault {
+		t.Fatal("DRY_RUN should have HasDefault=true")
+	}
+	if vars[0].DefaultValue != "false" {
+		t.Fatalf("DefaultValue = %q, want \"false\"", vars[0].DefaultValue)
+	}
+}
+
+func TestParseInlineValue(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"hello", "hello"},
+		{" hello", "hello"},
+		{"  hello world", "hello world"},
+		{`"hello"`, "hello"},
+		{`'hello'`, "hello"},
+		{` "hello"`, "hello"},
+		{`"it's fine"`, "it's fine"},
+		{`"hello \"world\""`, `hello \"world\"`}, // only outer pair stripped
+		{"", ""},
+		{`""`, ""},
+	}
+	for _, tc := range cases {
+		got := parseInlineValue(tc.input)
+		if got != tc.want {
+			t.Errorf("parseInlineValue(%q) = %q, want %q", tc.input, got, tc.want)
+		}
 	}
 }
