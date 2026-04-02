@@ -340,16 +340,16 @@ func TestSetNewKey_NoPassphrase(t *testing.T) {
 	}
 }
 
-func TestSetOverwrite_RequiresPassphrase(t *testing.T) {
+func TestSetReplace_RequiresPassphrase(t *testing.T) {
 	sockPath, srv := startTestServer(t, map[string]string{
 		"KEY": "old_value",
 	}, "secret", 0)
 	defer srv.Stop()
 
-	// Overwrite with wrong passphrase should fail
+	// Replace with wrong passphrase should fail
 	err := set(sockPath, "KEY", "new_value", "wrong")
 	if err == nil {
-		t.Fatal("overwrite with wrong passphrase should fail")
+		t.Fatal("replace with wrong passphrase should fail")
 	}
 	if !strings.Contains(err.Error(), ErrPassphraseRequired) {
 		t.Fatalf("unexpected error: %v", err)
@@ -358,29 +358,29 @@ func TestSetOverwrite_RequiresPassphrase(t *testing.T) {
 	// Value should be unchanged
 	val, _ := Get(sockPath, "KEY")
 	if val != "old_value" {
-		t.Fatalf("value changed despite failed overwrite: %q", val)
+		t.Fatalf("value changed despite failed replace: %q", val)
 	}
 
-	// Overwrite with correct passphrase should succeed
+	// Replace with correct passphrase should succeed
 	if err := set(sockPath, "KEY", "new_value", "secret"); err != nil {
-		t.Fatalf("overwrite with correct passphrase: %v", err)
+		t.Fatalf("replace with correct passphrase: %v", err)
 	}
 
 	val, _ = Get(sockPath, "KEY")
 	if val != "new_value" {
-		t.Fatalf("Get after overwrite = %q, want %q", val, "new_value")
+		t.Fatalf("Get after replace = %q, want %q", val, "new_value")
 	}
 }
 
-func TestSetOverwrite_EmptyPassphrase(t *testing.T) {
+func TestSetReplace_EmptyPassphrase(t *testing.T) {
 	sockPath, srv := startTestServer(t, map[string]string{
 		"KEY": "old_value",
 	}, "", 0)
 	defer srv.Stop()
 
-	// Overwrite with empty passphrase (store has no passphrase) should work
+	// Replace with empty passphrase (store has no passphrase) should work
 	if err := set(sockPath, "KEY", "new_value", ""); err != nil {
-		t.Fatalf("overwrite with empty passphrase: %v", err)
+		t.Fatalf("replace with empty passphrase: %v", err)
 	}
 
 	val, _ := Get(sockPath, "KEY")
@@ -395,7 +395,7 @@ func TestSetBatch(t *testing.T) {
 	}, "secret", 0)
 	defer srv.Stop()
 
-	// Batch with mix of new and overwrite keys — one save, one passphrase check
+	// Batch with mix of new and replace keys — one save, one passphrase check
 	items := []SetItem{
 		{Key: "NEW_A", Value: "a"},
 		{Key: "NEW_B", Value: "b"},
@@ -422,7 +422,7 @@ func TestSetBatch_WrongPassphrase(t *testing.T) {
 	}, "secret", 0)
 	defer srv.Stop()
 
-	// Batch fails entirely if passphrase wrong for any overwrite
+	// Batch fails entirely if passphrase wrong for any replace
 	items := []SetItem{
 		{Key: "NEW_KEY", Value: "new"},
 		{Key: "EXISTING", Value: "updated"},
@@ -552,7 +552,7 @@ func TestPasswd_EmptyToSet(t *testing.T) {
 		t.Fatalf("passwd empty to set: %v", err)
 	}
 
-	// Now overwrites require newpass
+	// Now replacements require newpass
 	if err := set(sockPath, "KEY", "updated", ""); err == nil {
 		t.Fatal("empty passphrase should no longer work")
 	}
@@ -601,7 +601,7 @@ func TestConcurrentSets(t *testing.T) {
 
 // --- History tests ---
 
-func TestHistory_RecordedOnOverwrite(t *testing.T) {
+func TestHistory_RecordedOnReplace(t *testing.T) {
 	sockPath, srv := startTestServer(t, map[string]string{
 		"KEY": "v1",
 	}, "secret", 0)

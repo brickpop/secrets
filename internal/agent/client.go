@@ -82,7 +82,7 @@ func List(sockPath string) ([]string, error) {
 }
 
 // Set stores one or more key-value pairs via the agent.
-// Passphrase is required when any item overwrites an existing key.
+// Passphrase is required when any item replaces an existing key.
 func Set(sockPath string, items []SetItem, passphrase string) error {
 	conn, err := newConn(sockPath)
 	if err != nil {

@@ -13,22 +13,22 @@ import (
 // Manifest represents a parsed .vars.yaml file (committed, team-owned).
 type Manifest struct {
 	Keys     []string                     `yaml:"keys"`
-	Mappings map[string]string            `yaml:"mappings"`
 	Profiles map[string]map[string]string `yaml:"profiles"`
 }
 
 // LocalManifest represents a parsed .vars.local.yaml file (personal, git-ignored).
 type LocalManifest struct {
-	Mappings map[string]string            `yaml:"mappings"`
 	Profiles map[string]map[string]string `yaml:"profiles"`
 }
 
-// ResolvedVar is a variable name mapped to its store key, or an inline literal value.
+// ResolvedVar is a variable name mapped to its store key, or an inline/default value.
 type ResolvedVar struct {
-	EnvName     string // the env var name to export
-	StoreKey    string // the key to look up in the store (empty when IsInline)
-	InlineValue string // literal value when IsInline is true
-	IsInline    bool   // true when value is a literal (=value syntax in profile)
+	EnvName      string // the env var name to export
+	StoreKey     string // the key to look up in the store (empty when IsInline)
+	InlineValue  string // literal value when IsInline is true
+	IsInline     bool   // true when value is a literal (= syntax)
+	DefaultValue string // fallback value when HasDefault is true
+	HasDefault   bool   // true when ?= syntax: use store if present, else DefaultValue
 }
 
 // Load parses a .vars.yaml file.
@@ -68,21 +68,28 @@ func LoadLocal(path string) (*LocalManifest, error) {
 	return &m, nil
 }
 
-// Resolve maps each manifest key to a store key.
+// Resolve maps each manifest key to a store key (or inline/default value).
 // localPath is the path to .vars.local.yaml (may not exist).
-// profile is the active profile name (empty string = auto-detect "default" if present).
+// profile is the active profile name (empty = auto-detect "default" if present).
 //
-// Returns profileFound=false when an explicit profile was requested but is not
-// defined in either manifest. Callers may warn the user; resolution continues
-// using mappings and bare keys.
+// Reserved profile names:
+//   - "default"  auto-applied when no profile is specified
+//   - "global"   always-applied fallback layer (cannot be selected via --profile)
+//
+// Returns profileFound=false when an explicit profile was requested but does not
+// exist in either manifest. Resolution still continues using global and identity.
 //
 // Resolution priority for each key:
-//  1. Active profile, local file override
+//  1. Active profile, local file
 //  2. Active profile, committed manifest
-//  3. Local mappings
-//  4. Committed mappings
+//  3. global profile, local file
+//  4. global profile, committed manifest
 //  5. Bare key (identity)
 func Resolve(manifestPath, localPath, profile string) (vars []ResolvedVar, profileFound bool, err error) {
+	if profile == "global" {
+		return nil, false, fmt.Errorf("\"global\" is a reserved profile name and cannot be selected with --profile")
+	}
+
 	m, loadErr := Load(manifestPath)
 	if loadErr != nil {
 		return nil, false, loadErr
@@ -112,41 +119,64 @@ func Resolve(manifestPath, localPath, profile string) (vars []ResolvedVar, profi
 	vars = make([]ResolvedVar, 0, len(m.Keys))
 	for _, key := range m.Keys {
 		resolved := resolveKey(key, profile, m, local)
-		if strings.HasPrefix(resolved, "=") {
-			vars = append(vars, ResolvedVar{EnvName: key, InlineValue: resolved[1:], IsInline: true})
-		} else {
+		switch {
+		case strings.HasPrefix(resolved, "?="):
+			vars = append(vars, ResolvedVar{
+				EnvName:      key,
+				StoreKey:     key,
+				DefaultValue: parseInlineValue(resolved[2:]),
+				HasDefault:   true,
+			})
+		case strings.HasPrefix(resolved, "="):
+			vars = append(vars, ResolvedVar{
+				EnvName:     key,
+				InlineValue: parseInlineValue(resolved[1:]),
+				IsInline:    true,
+			})
+		default:
 			vars = append(vars, ResolvedVar{EnvName: key, StoreKey: resolved})
 		}
 	}
 	return vars, profileFound, nil
 }
 
-// resolveKey returns the store key for a given env var name.
+// parseInlineValue extracts the value from a = or ?= entry.
+// Trims leading whitespace, then strips one surrounding matched quote pair
+// to mirror how YAML itself handles quoted scalars.
+func parseInlineValue(s string) string {
+	v := strings.TrimLeft(s, " \t")
+	if len(v) >= 2 {
+		if (v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'') {
+			v = v[1 : len(v)-1]
+		}
+	}
+	return v
+}
+
+// resolveKey returns the store key (or inline sigil) for a given env var name.
+// Priority: active profile (local → committed) → global profile (local → committed) → identity.
 func resolveKey(key, profile string, m *Manifest, local *LocalManifest) string {
-	if profile != "" {
-		// Local profile override takes precedence over committed profile
+	// Active profile
+	if profile != "" && profile != "global" {
 		if local.Profiles != nil {
-			if profMap, ok := local.Profiles[profile]; ok {
-				if v, ok := profMap[key]; ok {
-					return v
-				}
+			if v, ok := local.Profiles[profile][key]; ok {
+				return v
 			}
 		}
 		if m.Profiles != nil {
-			if profMap, ok := m.Profiles[profile]; ok {
-				if v, ok := profMap[key]; ok {
-					return v
-				}
+			if v, ok := m.Profiles[profile][key]; ok {
+				return v
 			}
 		}
 	}
-	if local.Mappings != nil {
-		if v, ok := local.Mappings[key]; ok {
+	// Global profile (always-applied fallback)
+	if local.Profiles != nil {
+		if v, ok := local.Profiles["global"][key]; ok {
 			return v
 		}
 	}
-	if m.Mappings != nil {
-		if v, ok := m.Mappings[key]; ok {
+	if m.Profiles != nil {
+		if v, ok := m.Profiles["global"][key]; ok {
 			return v
 		}
 	}

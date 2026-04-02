@@ -25,6 +25,13 @@ shared across multiple projects. It replaces scattered .env files with
 a single age-encrypted store.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Warn if .vars.local.yaml exists and is not covered by .gitignore.
+		// Only relevant when running inside a project directory.
+		if _, err := os.Stat(".vars.yaml"); err == nil {
+			warnIfLocalNotGitignored()
+		}
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// First-time setup: no store yet — run the wizard.
 		if !store.Exists() {

@@ -26,18 +26,11 @@ func Fish(key string, value string) string {
 	return fmt.Sprintf("set -x %s '%s'", key, escaped)
 }
 
-// Dotenv returns a dotenv line: KEY="value"
-// Uses double-quote wrapping with backslash escaping for
-// double quotes, backslashes, dollar signs, backticks, and newlines.
+// Dotenv returns a bare dotenv line: KEY=value
+// No quoting or escaping — compatible with docker --env-file and similar tools
+// that read KEY=value literally.
 func Dotenv(key string, value string) string {
-	escaped := value
-	escaped = strings.ReplaceAll(escaped, "\\", "\\\\")
-	escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
-	escaped = strings.ReplaceAll(escaped, "$", "\\$")
-	escaped = strings.ReplaceAll(escaped, "`", "\\`")
-	escaped = strings.ReplaceAll(escaped, "\n", "\\n")
-	escaped = strings.ReplaceAll(escaped, "\r", "\\r")
-	return fmt.Sprintf("%s=\"%s\"", key, escaped)
+	return key + "=" + value
 }
 
 // FormatFunc is the type for a format function.

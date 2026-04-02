@@ -12,12 +12,12 @@ import (
 )
 
 var (
-	setForce bool
-	setSkip  bool
+	setReplace bool
+	setSkip    bool
 )
 
 func init() {
-	setCmd.Flags().BoolVarP(&setForce, "force", "f", false, "Overwrite existing key without confirmation")
+	setCmd.Flags().BoolVar(&setReplace, "replace", false, "Replace existing key without confirmation")
 	setCmd.Flags().BoolVar(&setSkip, "skip", false, "Skip if key already exists")
 	rootCmd.AddCommand(setCmd)
 }
@@ -30,8 +30,8 @@ interactively with echo disabled (preferred — inline values appear in
 shell history).`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if setForce && setSkip {
-			return UserError("--force and --skip are mutually exclusive")
+		if setReplace && setSkip {
+			return UserError("--replace and --skip are mutually exclusive")
 		}
 
 		key := args[0]
@@ -58,8 +58,7 @@ shell history).`,
 		sockPath := agentSocketPath()
 		isTTY := term.IsTerminal(int(os.Stdin.Fd()))
 
-		// Track whether this ends up being an overwrite (existing key with different value)
-		isOverwrite := false
+		isReplace := false
 
 		// Conflict resolution loop (handles rename re-checks)
 		for {
@@ -81,26 +80,26 @@ shell history).`,
 				return nil
 			}
 
-			isOverwrite = true
+			isReplace = true
 
-			if setForce {
+			if setReplace {
 				break
 			}
 
 			if !isTTY {
-				return UserError("key already exists; use --force or --skip")
+				return UserError("key already exists; use --replace or --skip")
 			}
 
 			fmt.Fprintf(os.Stderr, "\n%s already exists. New value will replace it.\n", key)
-			choice, err := stdinPrompter().Line("[o]verwrite  [r]ename  [s]kip > ")
+			choice, err := stdinPrompter().Line("[r]eplace  [n]ew name  [s]kip > ")
 			if err != nil {
 				return UserError(err.Error())
 			}
 
 			switch c := strings.ToLower(strings.TrimSpace(choice)); {
-			case strings.HasPrefix(c, "o"):
-				// proceed to set below
 			case strings.HasPrefix(c, "r"):
+				// proceed to set below
+			case strings.HasPrefix(c, "n"):
 				sfx, err := stdinPrompter().Line(fmt.Sprintf("Suffix (saved as %s_<suffix>): ", key))
 				if err != nil {
 					return UserError(err.Error())
@@ -111,7 +110,7 @@ shell history).`,
 					return nil
 				}
 				key = key + "_" + sfx
-				isOverwrite = false // renamed key may be new — re-check
+				isReplace = false // renamed key may be new — re-check
 				continue
 			default: // "s" or unrecognised
 				fmt.Fprintln(os.Stderr, "Skipped.")
@@ -122,7 +121,7 @@ shell history).`,
 
 		item := []agent.SetItem{{Key: key, Value: value}}
 		var setErr error
-		if isOverwrite {
+		if isReplace {
 			setErr = withPassphrase("Store passphrase to confirm: ", func(passphrase string) error {
 				return agent.Set(sockPath, item, passphrase)
 			})

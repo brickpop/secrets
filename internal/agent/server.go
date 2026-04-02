@@ -175,7 +175,7 @@ func (s *Server) Set(_ context.Context, req *SetRequest) (*SetResponse, error) {
 	s.dataMu.Lock()
 	defer s.dataMu.Unlock()
 
-	// Check passphrase once upfront: required if any item overwrites an existing key.
+	// Check passphrase once upfront: required if any item replaces an existing key.
 	for _, item := range req.Items {
 		if _, exists := s.data[item.Key]; exists {
 			if !s.checkPassphrase(req.Passphrase) {
@@ -185,7 +185,7 @@ func (s *Server) Set(_ context.Context, req *SetRequest) (*SetResponse, error) {
 		}
 	}
 
-	// Apply all mutations, recording history for overwrites.
+	// Apply all mutations, recording history for replacements.
 	for _, item := range req.Items {
 		if old, exists := s.data[item.Key]; exists {
 			n := nextHistorySuffix(s.data, item.Key)

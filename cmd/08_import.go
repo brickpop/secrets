@@ -13,12 +13,12 @@ import (
 )
 
 var (
-	importForce bool
-	importSkip  bool
+	importReplace bool
+	importSkip    bool
 )
 
 func init() {
-	importCmd.Flags().BoolVarP(&importForce, "force", "f", false, "Overwrite conflicting keys without confirmation")
+	importCmd.Flags().BoolVar(&importReplace, "replace", false, "Replace conflicting keys without confirmation")
 	importCmd.Flags().BoolVar(&importSkip, "skip", false, "Skip conflicting keys without prompting")
 	rootCmd.AddCommand(importCmd)
 }
@@ -32,8 +32,8 @@ Without a scope, keys are imported into the default scope.
 With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if importForce && importSkip {
-			return UserError("--force and --skip are mutually exclusive")
+		if importReplace && importSkip {
+			return UserError("--replace and --skip are mutually exclusive")
 		}
 
 		var scope, filePath string
@@ -74,12 +74,12 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 		isTTY := term.IsTerminal(int(os.Stdin.Fd()))
 
 		type pendingItem struct {
-			key         string
-			value       string
-			isOverwrite bool
+			key       string
+			value     string
+			isReplace bool
 		}
 		var pending []pendingItem
-		var imported, overwritten, skipped int
+		var imported, replaced, skipped int
 
 	entryLoop:
 		for _, e := range entries {
@@ -109,30 +109,30 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 					continue entryLoop
 				}
 
-				if importForce {
+				if importReplace {
 					pending = append(pending, pendingItem{key, value, true})
-					overwritten++
+					replaced++
 					continue entryLoop
 				}
 
 				// Interactive mode
 				if !isTTY {
-					return UserError("conflicting keys found; use --force or --skip to resolve non-interactively")
+					return UserError("conflicting keys found; use --replace or --skip to resolve non-interactively")
 				}
 
 				fmt.Fprintf(os.Stderr, "\n%s already exists.\n  current:  %s\n  imported: %s\n", key, existing, value)
-				choice, err := stdinPrompter().Line("[o]verwrite  [r]ename  [s]kip > ")
+				choice, err := stdinPrompter().Line("[r]eplace  [n]ew name  [s]kip > ")
 				if err != nil {
 					return UserError(err.Error())
 				}
 
 				switch c := strings.ToLower(strings.TrimSpace(choice)); {
-				case strings.HasPrefix(c, "o"):
+				case strings.HasPrefix(c, "r"):
 					pending = append(pending, pendingItem{key, value, true})
-					overwritten++
+					replaced++
 					continue entryLoop
 
-				case strings.HasPrefix(c, "r"):
+				case strings.HasPrefix(c, "n"):
 					sfx, err := stdinPrompter().Line(fmt.Sprintf("Suffix (saved as %s_<suffix>): ", key))
 					if err != nil {
 						return UserError(err.Error())
@@ -160,16 +160,16 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 				items[i] = agent.SetItem{Key: p.key, Value: p.value}
 			}
 
-			hasOverwrite := false
+			hasReplace := false
 			for _, p := range pending {
-				if p.isOverwrite {
-					hasOverwrite = true
+				if p.isReplace {
+					hasReplace = true
 					break
 				}
 			}
 
 			var setErr error
-			if hasOverwrite {
+			if hasReplace {
 				setErr = withPassphrase("Store passphrase to confirm: ", func(passphrase string) error {
 					return agent.Set(sockPath, items, passphrase)
 				})
@@ -181,7 +181,7 @@ With a scope, keys are prefixed: vars import prod .env → prod/KEY.`,
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "Imported %d, overwritten %d, skipped %d.\n", imported, overwritten, skipped)
+		fmt.Fprintf(os.Stderr, "Imported %d, replaced %d, skipped %d.\n", imported, replaced, skipped)
 		return nil
 	},
 }

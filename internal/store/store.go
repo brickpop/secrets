@@ -155,7 +155,7 @@ func (s *Store) Get(key string) ([]byte, error) {
 	return out, nil
 }
 
-// Set stores a value for a key. Overwrites if the key already exists.
+// Set stores a value for a key. Replaces if the key already exists.
 func (s *Store) Set(key string, value []byte) {
 	// Zero old value if overwriting
 	if old, ok := s.data[key]; ok {
