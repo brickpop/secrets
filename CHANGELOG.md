@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.0]
+
+### Added
+- `vars mv --force` / `-f` — skip confirmation prompt for non-interactive use (CI / scripts)
+- CI and non-interactive usage documented: `--replace` on `set`/`import`, `--force` on `rm`/`mv`, `echo "" | vars agent --stdin` for stores with no passphrase
+
+### Changed
+- Passphrase re-confirmation removed from `set --replace`, `rm`, and `mv` — the active agent session is the authentication boundary; asking for the passphrase again was redundant given that `vars dump` is always available to a session holder
+- `rm` without `--force` now shows a summary and prompts `Confirm? [y/N]` instead of asking for the passphrase; `--force` skips both
+- `mv` without `--force` now prompts `Confirm? [y/N]`; in non-TTY mode it errors with a clear message directing to `--force`
+- `set` and `import` write directly after conflict resolution — no passphrase step
+
+### Removed
+- `passphrase` field removed from `SetRequest`, `DeleteRequest`, and `RenameRequest` proto messages — protocol simplified; `PasswdRequest` retains it (re-encryption requires the current credential)
+
 ## [0.4.0]
 
 ### Added
