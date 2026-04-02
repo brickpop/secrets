@@ -45,15 +45,18 @@ Commit .vars.yaml to version control. Never commit .vars.local.yaml.`,
 
 keys:
   - MY_KEY
-  # - OTHER_KEY
+  # - LOG_LEVEL    # keys used in profiles must be listed as well
+  # - RPC_URL
 
-# profiles:      # optional: named sets of var→storeKey mappings (select with --profile)
-#   global:      # always-applied fallback (team-wide aliases)
-#     MY_KEY: prod/MY_KEY              # resolve to a store key
-#     LOG_LEVEL: = info                # emit this value
-#     RPC_URL: ?= http://localhost     # use store value, fall back to this value
-#   default:     # auto-applied when no --profile is given
+# profiles:                         # optional: named sets of var→storeKey mappings (select with --profile)
+#   global:                         # global fallback (team-wide aliases)
+#     MY_KEY: prod/MY_KEY                 # resolve to a different store key
+#     LOG_LEVEL: = info                   # always emit this literal value
+#     RPC_URL: ?= http://localhost        # use store value, fall back to this value
+#   default:                        # used when no --profile is given
 #     MY_KEY: dev/MY_KEY
+#   sepolia:
+#     RPC_URL: ?= http://sepolia
 #   mainnet:
 #     MY_KEY: prod/MY_KEY
 `

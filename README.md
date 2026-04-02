@@ -162,6 +162,8 @@ profiles:
 
 The active profile always takes precedence over `global:`. `global:` fills in what the active profile doesn't cover.
 
+All keys used in a profile need to be listed in `keys:`. Profiles only provide mappings; `keys:` is what gets resolved.
+
 ### Inline literals and defaults
 
 Profile values support two special prefixes:
