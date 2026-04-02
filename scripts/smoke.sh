@@ -66,8 +66,8 @@ contains "$($BIN dump --dotenv 2>/dev/null)" "ETHERSCAN_API"
 test "$($BIN dump | wc -l)" -eq 3
 
 echo "--- history ---"
-$BIN set --force RPC_URL https://rpc-v2.example.com
-$BIN set --force RPC_URL https://rpc-v3.example.com
+$BIN set --replace RPC_URL https://rpc-v2.example.com
+$BIN set --replace RPC_URL https://rpc-v3.example.com
 HIST=$($BIN history RPC_URL)
 contains "$HIST" "RPC_URL~2:"
 contains "$HIST" "https://rpc-v2.example.com"

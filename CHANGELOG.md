@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.0]
+
+### Added
+- `vars init` scaffolds a `.vars.yaml` manifest with commented examples in the current directory
+- `vars resolve` shell env fallback — if a manifest key is absent from the store and any piped `.env`, the current shell environment is used as a last resort; no export emitted, no error thrown; `--origin` annotates it as `# shell`
+- `vars agent --stdin` — reads the store passphrase from stdin for non-interactive startup (CI / script flows where stdin is already occupied by a piped dotenv file)
+- `?= value` default syntax in profile entries — uses the store value when present and non-empty, otherwise emits the default; follows the same trimming and quote-stripping rules as `= value`
+- `.vars.local.yaml` gitignore warning — any command run inside a project directory warns on stderr if `.vars.local.yaml` exists but is not covered by `.gitignore`
+- `--origin` now annotates `= value` and `?= value` entries as `# manifest`; shell-environment values as `# shell` (no export line emitted); missing keys as `# KEY  missing` (only with `--partial`)
+
+### Changed
+- `mappings:` key removed from `.vars.yaml` and `.vars.local.yaml` — team-wide aliases now live in the reserved `profiles: global:` entry, which is always applied as a fallback regardless of the active profile; `--profile global` is an error
+- `--force` renamed to `--replace` on `set` and `import` (signals intent: replace an existing value); `rm --force` unchanged (skip-confirmation semantics)
+- Interactive conflict prompt changed from `[o]verwrite  [r]ename  [s]kip` to `[r]eplace  [n]ew name  [s]kip`
+- `--origin` source label `stdin` renamed to `.env`; `literal` and `default` unified into `manifest`
+- `--dotenv` output is now bare `KEY=value` with no quoting — compatible with `docker --env-file` and tools that read values literally
+- "overwrite" replaced with "replace" throughout all user-facing messages, flags, and documentation
+
 ## [0.3.0]
 
 - `vars` with no arguments triggers a first-run setup wizard when no store exists: explains store location, prompts for passphrase, creates the store, starts the agent, and prints next steps

@@ -159,7 +159,7 @@ func TestGet_NotFound(t *testing.T) {
 	}
 }
 
-func TestSet_Overwrite(t *testing.T) {
+func TestSet_Replace(t *testing.T) {
 	setupTestDir(t)
 	backend := initTestStore(t, "test-passphrase")
 

@@ -198,16 +198,16 @@ func TestIntegration_CRUDLifecycle(t *testing.T) {
 	r.mustFail("rm", "NONEXISTENT", "--force")
 }
 
-func TestIntegration_SetOverwrite(t *testing.T) {
+func TestIntegration_SetReplace(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
 	r.mustRun("set", "KEY", "first")
-	r.mustRun("set", "KEY", "second", "--force")
+	r.mustRun("set", "KEY", "second", "--replace")
 
 	out := r.mustRun("get", "KEY")
 	if out != "second" {
-		t.Fatalf("get after overwrite = %q, want %q", out, "second")
+		t.Fatalf("get after replace = %q, want %q", out, "second")
 	}
 }
 
@@ -244,7 +244,7 @@ func TestIntegration_Set_NonTTYConflictFails(t *testing.T) {
 
 	r.mustRun("set", "KEY", "original")
 	_, stderr := r.mustFail("set", "KEY", "new")
-	if !strings.Contains(stderr, "--force") || !strings.Contains(stderr, "--skip") {
+	if !strings.Contains(stderr, "--replace") || !strings.Contains(stderr, "--skip") {
 		t.Fatalf("expected flag hint, got: %s", stderr)
 	}
 }
@@ -325,7 +325,7 @@ func TestIntegration_ResolveDotenv(t *testing.T) {
 	}
 }
 
-func TestIntegration_ResolveLocalMappings(t *testing.T) {
+func TestIntegration_ResolveLocalGlobalProfile(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
@@ -594,7 +594,7 @@ func TestIntegration_Version(t *testing.T) {
 	}
 }
 
-func TestIntegration_ResolveCommittedMappings(t *testing.T) {
+func TestIntegration_ResolveGlobalProfile(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
@@ -613,6 +613,58 @@ profiles:
 	}
 	if !strings.Contains(out, "tok123") {
 		t.Fatalf("global profile has wrong value: %s", out)
+	}
+}
+
+func TestIntegration_Resolve_DefaultProfileAutoApplied(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "prod/RPC_URL", "https://prod.rpc")
+
+	r.writeFile(".vars.yaml", `keys:
+  - RPC_URL
+profiles:
+  default:
+    RPC_URL: prod/RPC_URL
+`)
+
+	// No --profile flag: "default" profile should be applied automatically
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"))
+	if !strings.Contains(out, "https://prod.rpc") {
+		t.Fatalf("default profile not auto-applied: %s", out)
+	}
+}
+
+func TestIntegration_Resolve_ActiveProfileOverridesGlobal(t *testing.T) {
+	r := newRunner(t)
+	r.initNoPassphrase()
+
+	r.mustRun("set", "shared/KEY", "from-global")
+	r.mustRun("set", "prod/KEY", "from-mainnet")
+
+	r.writeFile(".vars.yaml", `keys:
+  - MY_KEY
+profiles:
+  global:
+    MY_KEY: shared/KEY
+  mainnet:
+    MY_KEY: prod/KEY
+`)
+
+	// Without --profile: global applies
+	out := r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"))
+	if !strings.Contains(out, "from-global") {
+		t.Fatalf("global profile not applied when no profile active: %s", out)
+	}
+
+	// With --profile mainnet: active profile overrides global
+	out = r.mustRun("resolve", "-f", filepath.Join(r.workDir, ".vars.yaml"), "--profile", "mainnet")
+	if !strings.Contains(out, "from-mainnet") {
+		t.Fatalf("active profile should override global: %s", out)
+	}
+	if strings.Contains(out, "from-global") {
+		t.Fatalf("global value should not appear when active profile overrides: %s", out)
 	}
 }
 
@@ -825,16 +877,16 @@ func TestIntegration_Import_SkipConflict(t *testing.T) {
 	}
 }
 
-func TestIntegration_Import_OverwriteConflict(t *testing.T) {
+func TestIntegration_Import_ReplaceConflict(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
 	r.mustRun("set", "RPC_URL", "original")
 	r.writeFile(".env", "RPC_URL=updated\n")
-	r.mustRun("import", filepath.Join(r.workDir, ".env"), "--force")
+	r.mustRun("import", filepath.Join(r.workDir, ".env"), "--replace")
 
 	if r.mustRun("get", "RPC_URL") != "updated" {
-		t.Fatal("RPC_URL should be overwritten")
+		t.Fatal("RPC_URL should be replaced")
 	}
 }
 
@@ -844,7 +896,7 @@ func TestIntegration_Import_SameValueSkipped(t *testing.T) {
 
 	r.mustRun("set", "RPC_URL", "same_value")
 	r.writeFile(".env", "RPC_URL=same_value\n")
-	// No --skip or --force needed — same value is not a conflict
+	// No --skip or --replace needed — same value is not a conflict
 	r.mustRun("import", filepath.Join(r.workDir, ".env"))
 
 	if r.mustRun("get", "RPC_URL") != "same_value" {
@@ -861,8 +913,8 @@ func TestIntegration_Import_NonTTYConflictFails(t *testing.T) {
 
 	// Non-TTY with conflict and no flag should fail
 	_, stderr := r.mustFail("import", filepath.Join(r.workDir, ".env"))
-	if !strings.Contains(stderr, "--force") || !strings.Contains(stderr, "--skip") {
-		t.Fatalf("expected hint about --force/--skip, got: %s", stderr)
+	if !strings.Contains(stderr, "--replace") || !strings.Contains(stderr, "--skip") {
+		t.Fatalf("expected hint about --replace/--skip, got: %s", stderr)
 	}
 }
 
@@ -1027,13 +1079,13 @@ func TestIntegration_Ls_All(t *testing.T) {
 	}
 }
 
-func TestIntegration_History_RecordedOnOverwrite(t *testing.T) {
+func TestIntegration_History_RecordedOnReplace(t *testing.T) {
 	r := newRunner(t)
 	r.initNoPassphrase()
 
 	r.mustRun("set", "RPC_URL", "https://v1.example.com")
-	r.mustRun("set", "--force", "RPC_URL", "https://v2.example.com")
-	r.mustRun("set", "--force", "RPC_URL", "https://v3.example.com")
+	r.mustRun("set", "--replace", "RPC_URL", "https://v2.example.com")
+	r.mustRun("set", "--replace", "RPC_URL", "https://v3.example.com")
 
 	out := r.mustRun("history", "RPC_URL")
 	lines := strings.Split(strings.TrimSpace(out), "\n")
@@ -1060,7 +1112,7 @@ func TestIntegration_History_NotInLs(t *testing.T) {
 	r.initNoPassphrase()
 
 	r.mustRun("set", "KEY", "v1")
-	r.mustRun("set", "--force", "KEY", "v2")
+	r.mustRun("set", "--replace", "KEY", "v2")
 
 	out := r.mustRun("ls", "--all")
 	if strings.Contains(out, "~") {
@@ -1073,7 +1125,7 @@ func TestIntegration_History_DeleteCascades(t *testing.T) {
 	r.initNoPassphrase()
 
 	r.mustRun("set", "KEY", "v1")
-	r.mustRun("set", "--force", "KEY", "v2")
+	r.mustRun("set", "--replace", "KEY", "v2")
 	r.mustRun("rm", "--force", "KEY")
 
 	// Verify history was cascade-deleted (no KEY~ entries remain in store)
@@ -1088,7 +1140,7 @@ func TestIntegration_History_MvCarriesHistory(t *testing.T) {
 	r.initNoPassphrase()
 
 	r.mustRun("set", "OLD_KEY", "v1")
-	r.mustRun("set", "--force", "OLD_KEY", "v2")
+	r.mustRun("set", "--replace", "OLD_KEY", "v2")
 	r.mustRun("mv", "OLD_KEY", "NEW_KEY")
 
 	// History under new name

@@ -29,7 +29,7 @@ func init() {
 	resolveCmd.Flags().StringVarP(&resolveFile, "file", "f", ".vars.yaml", "Path to the manifest file")
 	resolveCmd.Flags().BoolVar(&resolvePartial, "partial", false, "Skip missing keys instead of erroring")
 	resolveCmd.Flags().StringVarP(&resolveProfile, "profile", "p", "", "Active profile name")
-	resolveCmd.Flags().BoolVar(&resolveOrigin, "origin", false, "Append source comment to each line (vars, .env, not set)")
+	resolveCmd.Flags().BoolVar(&resolveOrigin, "origin", false, "Annotate each line with its source (vars, .env, manifest, shell, missing)")
 	rootCmd.AddCommand(resolveCmd)
 }
 
@@ -58,7 +58,7 @@ Mapping values may use special prefixes:
   = value     emit literal value, no store lookup  (origin: manifest)
   ?= value    use store value; fall back to default (origin: manifest when default used)
 
---origin sources: vars | .env | manifest | shell | not set`,
+--origin sources: vars | .env | manifest | shell | missing`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		formatter := format.Posix
@@ -118,7 +118,7 @@ Mapping values may use special prefixes:
 		type entry struct {
 			envName string
 			value   string
-			source  string // "vars" | ".env" | "manifest" | "shell" | "not set" | "" (pass-through)
+			source  string // "vars" | ".env" | "manifest" | "shell" | "missing" | "" (pass-through)
 		}
 		var entries []entry
 
@@ -144,7 +144,7 @@ Mapping values may use special prefixes:
 				}
 				if resolvePartial {
 					if resolveOrigin {
-						entries = append(entries, entry{v.EnvName, "", "not set"})
+						entries = append(entries, entry{v.EnvName, "", "missing"})
 					} else {
 						fmt.Fprintf(os.Stderr, "vars: %q not found (skipping)\n", v.StoreKey)
 					}
@@ -167,8 +167,8 @@ Mapping values may use special prefixes:
 
 		for _, e := range entries {
 			switch e.source {
-			case "not set":
-				fmt.Fprintf(os.Stdout, "# %s  not set\n", e.envName)
+			case "missing":
+				fmt.Fprintf(os.Stdout, "# %s  missing\n", e.envName)
 			case "shell":
 				// Value already present in the calling shell — no export needed.
 				if resolveOrigin {
