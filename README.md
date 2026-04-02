@@ -10,11 +10,11 @@ Secure environment variables for your projects. One encrypted personal store, sh
 
 ```sh
 # macOS (Apple Silicon)
-curl -L https://github.com/vars-cli/vars/releases/download/latest/vars_darwin_arm64.tar.gz | tar xz
+curl -L https://github.com/vars-cli/vars/releases/latest/download/vars_darwin_arm64.tar.gz | tar xz
 sudo mv vars /usr/local/bin/
 
 # Linux / WSL (amd64)
-curl -L https://github.com/vars-cli/vars/releases/download/latest/vars_linux_amd64.tar.gz | tar xz
+curl -L https://github.com/vars-cli/vars/releases/latest/download/vars_linux_amd64.tar.gz | tar xz
 sudo mv vars /usr/local/bin/
 ```
 
