@@ -50,15 +50,15 @@ keys:
 
 # profiles:                         # optional: named sets of var→storeKey mappings (select with --profile)
 #   global:                         # global fallback (team-wide aliases)
-#     MY_KEY: prod/MY_KEY                 # resolve to a different store key
+#     MY_KEY: dev/MY_KEY                  # resolve to a different store key
 #     LOG_LEVEL: = info                   # always emit this literal value
-#     RPC_URL: ?= http://localhost        # use store value, fall back to this value
 #   default:                        # used when no --profile is given
-#     MY_KEY: dev/MY_KEY
+#     RPC_URL: ?= http://localhost        # use store value, fall back to this value
 #   sepolia:
 #     RPC_URL: ?= http://sepolia
 #   mainnet:
 #     MY_KEY: prod/MY_KEY
+#     RPC_URL: ?= http://mainnet
 `
 
 		if err := os.WriteFile(path, []byte(scaffold), 0644); err != nil {
