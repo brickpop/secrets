@@ -290,8 +290,10 @@ Run this during onboarding or after a key rotation. As before, `--skip` leaves e
 ### Renaming and removing keys
 
 ```sh
-vars mv OLD_KEY NEW_KEY    # atomic rename
-vars rm OLD_KEY            # delete key and its history
+vars mv OLD_KEY NEW_KEY           # atomic rename — prompts for confirmation
+vars mv OLD_KEY NEW_KEY --force   # skip prompt (scripts / CI)
+vars rm OLD_KEY                   # delete key and its history — prompts for confirmation
+vars rm OLD_KEY --force           # skip prompt
 ```
 
 ## Checking older values
@@ -335,6 +337,7 @@ vars resolve [flags]          # Resolve manifest keys as shell exports
 
 ```sh
 vars agent [--ttl N]          # Adjust daemon lifetime (default: 8h)
+vars agent --stdin            # Start agent, read passphrase from stdin (CI)
 vars agent stop               # Wipe memory and stop immediately
 ```
 
@@ -364,6 +367,12 @@ When a key exists with a different value and neither flag is given, `set` prompt
 | `--fish` | — | Output in fish shell format |
 | `--partial` | — | Skip missing keys instead of erroring |
 | `--origin` | — | Annotate each line with its source |
+
+### `mv` flags
+
+| Flag | Description |
+|------|-------------|
+| `-f`, `--force` | Skip confirmation prompt |
 
 ### `rm` flags
 
@@ -411,11 +420,22 @@ To set a persistent default, add `VARS_AGENT_TTL` to your shell profile:
 export VARS_AGENT_TTL=4h   # e.g. 15, 60s, 30m, 4h, 12h, 1d, 0 for unlimited
 ```
 
-In CI or scripts where stdin is already occupied by a piped `.env` file, pre-start the agent with the passphrase before piping:
+### CI and non-interactive use
+
+Pre-start the agent with the passphrase before running other commands (use an empty string if no passphrase was set):
 
 ```sh
 echo "$STORE_PASSPHRASE" | vars agent --stdin
 cat .env | vars resolve --partial
+```
+
+All destructive commands support flags for non-interactive flows. Use these in scripts to skip confirmation prompts:
+
+```sh
+vars set KEY value --replace          # replace without prompt
+vars import .env --replace            # import, replacing conflicts
+vars mv OLD_KEY NEW_KEY --force       # rename without prompt
+vars rm KEY --force                   # delete without prompt
 ```
 
 ---
